@@ -1,6 +1,6 @@
 import type { Levels } from '../core/stats';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 const SAVE_KEY = 'tower-defense-save';
 
 export interface SaveData {
@@ -12,6 +12,10 @@ export interface SaveData {
   totalKills: number;
   /** 最後一次永久進度變更時間，用於本機與雲端衝突判定。 */
   updatedAt: number;
+  /** 歷史最佳的每秒金幣產出，離線收益據此估算（v3 起） */
+  coinRate: number;
+  /** 最後一次在線時間；開啟遊戲時據此結算離線收益（v3 起） */
+  lastSeenAt: number;
 }
 
 export function defaultSave(): SaveData {
@@ -23,6 +27,8 @@ export function defaultSave(): SaveData {
     totalRuns: 0,
     totalKills: 0,
     updatedAt: 0,
+    coinRate: 0,
+    lastSeenAt: 0,
   };
 }
 
@@ -34,6 +40,7 @@ export function migrate(raw: unknown): SaveData {
   if (typeof raw !== 'object' || raw === null) return defaultSave();
   const data = { ...defaultSave(), ...(raw as Partial<SaveData>) };
   // 未來版本的遷移在這裡逐段加：if (data.version === 1) { ...; data.version = 2 }
+  // v2 → v3：coinRate / lastSeenAt 由 defaultSave 補 0，首次上線不結算離線收益。
   data.version = SAVE_VERSION;
   return data;
 }

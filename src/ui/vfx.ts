@@ -31,6 +31,13 @@ interface Muzzle {
   life: number;
 }
 
+/** 遠程敵人對塔的射擊光束（敵人位置 → 塔） */
+interface Beam {
+  x: number;
+  y: number;
+  life: number;
+}
+
 /**
  * 純視覺特效層——只吃 SimEvent，不回寫任何遊戲狀態。
  * 命中閃白以敵人 id 為鍵存在這裡，核心的 Enemy 結構保持乾淨。
@@ -39,6 +46,7 @@ export class Vfx {
   texts: FloatText[] = [];
   particles: Particle[] = [];
   muzzles: Muzzle[] = [];
+  beams: Beam[] = [];
   flash = new Map<number, number>();
   shake = 0;
   private rand = 0x9e3779b9;
@@ -106,7 +114,28 @@ export class Vfx {
         case 'towerHit':
           this.shake = Math.min(this.shake + Math.min(e.dmg * 0.05, 6) + 1.5, 9);
           break;
-        // 'wave' 由 UI 橫幅另行處理
+        case 'enemyShot':
+          this.beams.push({ x: e.x, y: e.y, life: 0.12 });
+          break;
+        case 'summon': {
+          // 召喚：從 Boss 腳下炸開一圈粉紫粒子
+          for (let i = 0; i < 14; i++) {
+            const a = (i / 14) * Math.PI * 2;
+            const sp = 90 + this.rnd() * 60;
+            this.particles.push({
+              x: e.x,
+              y: e.y,
+              vx: Math.cos(a) * sp,
+              vy: Math.sin(a) * sp,
+              life: 0.45 + this.rnd() * 0.25,
+              maxLife: 0.7,
+              color: '#d43cc8',
+              size: 1.5 + this.rnd() * 2,
+            });
+          }
+          break;
+        }
+        // 'wave' / 'perkOffer' 由 UI 另行處理
       }
     }
   }
@@ -131,6 +160,10 @@ export class Vfx {
     for (let i = this.muzzles.length - 1; i >= 0; i--) {
       this.muzzles[i].life -= dt;
       if (this.muzzles[i].life <= 0) this.muzzles.splice(i, 1);
+    }
+    for (let i = this.beams.length - 1; i >= 0; i--) {
+      this.beams[i].life -= dt;
+      if (this.beams[i].life <= 0) this.beams.splice(i, 1);
     }
     for (const [id, t] of this.flash) {
       const nt = t - dt;

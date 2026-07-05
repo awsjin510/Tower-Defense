@@ -3,7 +3,8 @@
     { "id": "normal", "name": "士兵", "hpMult": 1.0, "speedMult": 1.0, "dmgMult": 1.0, "rewardMult": 1.0, "radius": 9, "color": "#e05555", "minWave": 1 },
     { "id": "fast", "name": "疾行者", "hpMult": 0.55, "speedMult": 1.9, "dmgMult": 0.7, "rewardMult": 1.15, "radius": 7, "color": "#e0a83c", "minWave": 3 },
     { "id": "tank", "name": "重甲兵", "hpMult": 3.2, "speedMult": 0.55, "dmgMult": 1.8, "rewardMult": 2.6, "radius": 13, "color": "#8455e0", "minWave": 6 },
-    { "id": "boss", "name": "頭目", "hpMult": 22.0, "speedMult": 0.45, "dmgMult": 4.0, "rewardMult": 18.0, "radius": 22, "color": "#d43cc8", "minWave": 10 }
+    { "id": "sniper", "name": "狙擊手", "hpMult": 0.85, "speedMult": 0.95, "dmgMult": 1.3, "rewardMult": 1.7, "radius": 8, "color": "#3cc8e0", "minWave": 8, "attackRange": 150 },
+    { "id": "boss", "name": "頭目", "hpMult": 22.0, "speedMult": 0.45, "dmgMult": 4.0, "rewardMult": 18.0, "radius": 22, "color": "#d43cc8", "minWave": 10, "summonEvery": 6, "summonCount": 2, "summonType": "normal" }
   ],
   "scaling": {
     "baseHp": 11,
