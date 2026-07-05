@@ -1,0 +1,10 @@
+{
+  "research": [
+    { "id": "r_damage", "name": "火力研究", "icon": "🔥", "color": "#f85149", "stat": "damage",      "valuePerLevel": 6,    "baseCost": 150, "costGrowth": 1.55, "baseTimeSec": 120, "timeGrowth": 1.6,  "maxLevel": 20 },
+    { "id": "r_as",     "name": "擊發研究", "icon": "⚡", "color": "#e05580", "stat": "attackSpeed", "valuePerLevel": 0.05, "baseCost": 180, "costGrowth": 1.6,  "baseTimeSec": 150, "timeGrowth": 1.6,  "maxLevel": 20 },
+    { "id": "r_hp",     "name": "裝甲研究", "icon": "🛡️", "color": "#58a6ff", "stat": "maxHealth",   "valuePerLevel": 25,   "baseCost": 150, "costGrowth": 1.5,  "baseTimeSec": 120, "timeGrowth": 1.55, "maxLevel": 20 },
+    { "id": "r_crit",   "name": "精準研究", "icon": "🎯", "color": "#e3b341", "stat": "critChance",  "valuePerLevel": 0.01, "baseCost": 220, "costGrowth": 1.6,  "baseTimeSec": 180, "timeGrowth": 1.6,  "maxLevel": 15 },
+    { "id": "r_coin",   "name": "煉金研究", "icon": "🪙", "color": "#e3b341", "stat": "coinBonus",   "valuePerLevel": 0.06, "baseCost": 250, "costGrowth": 1.65, "baseTimeSec": 200, "timeGrowth": 1.65, "maxLevel": 15 },
+    { "id": "r_regen",  "name": "修復研究", "icon": "➕", "color": "#56d364", "stat": "healthRegen", "valuePerLevel": 0.4,  "baseCost": 160, "costGrowth": 1.5,  "baseTimeSec": 140, "timeGrowth": 1.55, "maxLevel": 15 }
+  ]
+}

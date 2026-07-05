@@ -35,6 +35,7 @@ export interface SimState {
   stats: Stats;
   inRunLevels: Levels;
   workshopLevels: Levels;
+  researchLevels: Levels;
   enemies: Enemy[];
   bullets: Bullet[];
   spawnList: string[];
@@ -55,9 +56,14 @@ export interface SimState {
   events: SimEvent[];
 }
 
-export function newRun(workshopLevels: Levels, seed: number, mods: RunMods = emptyMods()): SimState {
+export function newRun(
+  workshopLevels: Levels,
+  seed: number,
+  mods: RunMods = emptyMods(),
+  researchLevels: Levels = {}
+): SimState {
   const inRunLevels: Levels = {};
-  const stats = computeStats(workshopLevels, inRunLevels);
+  const stats = computeStats(workshopLevels, inRunLevels, researchLevels);
   applyCardStatMods(stats, mods.statMods);
   const rng = mulberry32(seed);
   return {
@@ -70,6 +76,7 @@ export function newRun(workshopLevels: Levels, seed: number, mods: RunMods = emp
     stats,
     inRunLevels,
     workshopLevels,
+    researchLevels,
     enemies: [],
     bullets: [],
     spawnList: waveComposition(1, rng),
@@ -152,7 +159,7 @@ function startNextWave(s: SimState): void {
 /** 屬性重算（升級/Perk 後呼叫）：血量上限提高時補差額，降低時夾回上限 */
 function recomputeStats(s: SimState): void {
   const prevMax = s.stats.maxHealth;
-  const next = computeStats(s.workshopLevels, s.inRunLevels);
+  const next = computeStats(s.workshopLevels, s.inRunLevels, s.researchLevels);
   applyPerks(next, s.perks);
   applyCardStatMods(next, s.mods.statMods);
   s.stats = next;
