@@ -2,12 +2,24 @@ import { buyInRunUpgrade, newRun, step, TICK_DT, type SimState } from './core/si
 import { IN_RUN_UPGRADES, WORKSHOP_UPGRADES } from './core/stats';
 import { formatNumber, isMaxed, upgradeCost } from './core/economy';
 import type { StatId, UpgradeCategory, UpgradeDef } from './core/types';
-import { localStorageStore, type SaveData } from './meta/save';
+import { applySave, localStorageStore, type SaveData } from './meta/save';
 import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
 import { render } from './ui/renderer';
+import type { User } from 'firebase/auth';
+
+type CloudModule = typeof import('./cloud/firebase');
 
 const store = localStorageStore();
 const save: SaveData = store.load();
+let cloudUser: User | null = null;
+let cloudModule: CloudModule | null = null;
+let cloudWrite = Promise.resolve();
+const cloudConfigPresent = Boolean(
+  import.meta.env.VITE_FIREBASE_API_KEY &&
+    import.meta.env.VITE_FIREBASE_AUTH_DOMAIN &&
+    import.meta.env.VITE_FIREBASE_PROJECT_ID &&
+    import.meta.env.VITE_FIREBASE_APP_ID
+);
 
 let sim: SimState | null = null;
 let speed = 1;
@@ -20,6 +32,84 @@ const workshopScreen = $('#workshop-screen');
 const battleScreen = $('#battle-screen');
 const canvas = $('#game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
+const authStatus = $('#auth-status');
+const authButton = $('#auth-btn') as HTMLButtonElement;
+
+function setAuthStatus(text: string, busy = false): void {
+  authStatus.textContent = text;
+  authButton.disabled = busy;
+}
+
+function saveProgress(): void {
+  store.save(save);
+  if (!cloudUser) return;
+  const uid = cloudUser.uid;
+  const snapshot = structuredClone(save);
+  cloudWrite = cloudWrite
+    .then(() => cloudModule!.writeCloudSave(uid, snapshot))
+    .then(() => setAuthStatus(`☁️ ${cloudUser?.email ?? '已同步'}`))
+    .catch(() => setAuthStatus('⚠️ 雲端同步失敗，本機進度已保存'));
+}
+
+async function reconcileCloud(user: User): Promise<void> {
+  setAuthStatus('☁️ 正在同步…', true);
+  try {
+    const cloud = await cloudModule!.loadCloudSave(user.uid);
+    if (cloud && cloud.updatedAt > save.updatedAt) {
+      applySave(save, cloud);
+      store.save(save);
+    } else {
+      store.save(save);
+      await cloudModule!.writeCloudSave(user.uid, save);
+    }
+    setAuthStatus(`☁️ ${user.email ?? 'Google 帳號'}`);
+    if (!sim) refreshWorkshop();
+  } catch {
+    setAuthStatus('⚠️ 雲端連線失敗，本機模式');
+  } finally {
+    authButton.disabled = false;
+  }
+}
+
+async function initCloud(): Promise<void> {
+  if (!cloudConfigPresent) {
+    setAuthStatus('本機存檔（雲端尚未設定）');
+    authButton.hidden = true;
+    return;
+  }
+  cloudModule = await import('./cloud/firebase');
+  if (!cloudModule.firebaseConfigured) {
+    setAuthStatus('本機存檔（雲端尚未設定）');
+    authButton.hidden = true;
+    return;
+  }
+
+  authButton.textContent = 'Google 登入';
+  authButton.addEventListener('click', async () => {
+    setAuthStatus(cloudUser ? '正在登出…' : '正在登入…', true);
+    try {
+      if (cloudUser) await cloudModule!.signOutGoogle();
+      else await cloudModule!.signInGoogle();
+    } catch {
+      setAuthStatus('登入未完成');
+      authButton.disabled = false;
+    }
+  });
+  cloudModule.watchGoogleUser((user) => {
+    cloudUser = user;
+    authButton.textContent = user ? '登出' : 'Google 登入';
+    if (user) void reconcileCloud(user);
+    else {
+      setAuthStatus('本機存檔');
+      authButton.disabled = false;
+    }
+  });
+}
+
+void initCloud().catch(() => {
+  setAuthStatus('本機存檔（雲端載入失敗）');
+  authButton.hidden = true;
+});
 
 function fmtStatDelta(stat: StatId, v: number): string {
   switch (stat) {
@@ -67,7 +157,7 @@ function refreshUpgradeButton(btn: UpgradeButton, level: number, currency: numbe
 const workshopButtons: UpgradeButton[] = WORKSHOP_UPGRADES.map((def) =>
   makeUpgradeButton(def, () => {
     if (buyWorkshopUpgrade(save, def.id)) {
-      store.save(save);
+      saveProgress();
       refreshWorkshop();
     }
   })
@@ -162,7 +252,7 @@ function startBattle(): void {
 
 function showResults(s: SimState): void {
   settleRun(save, { wave: s.wave, coinsEarned: s.coinsEarned, kills: s.kills });
-  store.save(save);
+  saveProgress();
   $('#results-rows').innerHTML = `
     <div class="row"><span class="label">到達波次</span><span class="value">${s.wave}</span></div>
     <div class="row"><span class="label">擊殺數</span><span class="value">${formatNumber(s.kills)}</span></div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultSave, migrate, SAVE_VERSION } from '../src/meta/save';
+import { applySave, defaultSave, migrate, SAVE_VERSION } from '../src/meta/save';
 import { buyWorkshopUpgrade, settleRun } from '../src/meta/workshop';
 
 describe('save', () => {
@@ -13,6 +13,7 @@ describe('save', () => {
     expect(migrated.version).toBe(SAVE_VERSION);
     expect(migrated.coins).toBe(50);
     expect(migrated.workshopLevels).toEqual({});
+    expect(migrated.updatedAt).toBe(0);
   });
 
   it('工坊購買扣金幣、升等級、錢不夠拒買', () => {
@@ -34,5 +35,15 @@ describe('save', () => {
     settleRun(save, { wave: 10, coinsEarned: 8, kills: 50 });
     expect(save.bestWave).toBe(15);
     expect(save.totalKills).toBe(150);
+  });
+
+  it('套用雲端存檔時保留原物件參考', () => {
+    const local = defaultSave();
+    const originalLevels = local.workshopLevels;
+    const cloud = { ...defaultSave(), coins: 88, workshopLevels: { ws_damage: 3 }, updatedAt: 123 };
+    applySave(local, cloud);
+    expect(local.coins).toBe(88);
+    expect(local.workshopLevels).toEqual({ ws_damage: 3 });
+    expect(local.workshopLevels).not.toBe(originalLevels);
   });
 });

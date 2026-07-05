@@ -5,6 +5,7 @@
 - 🎮 **線上遊玩**：https://awsjin510.github.io/Tower-Defense/
 - 📋 完整規劃：[docs/GAME_DESIGN_PLAN.md](docs/GAME_DESIGN_PLAN.md)
 - 🍎 iOS 上架評估：[docs/IOS_RELEASE_PLAN.md](docs/IOS_RELEASE_PLAN.md)
+- ☁️ Google 登入與雲端存檔：[docs/GOOGLE_CLOUD_SAVE_SETUP.md](docs/GOOGLE_CLOUD_SAVE_SETUP.md)
 
 ## 玩法（MVP）
 
