@@ -1,7 +1,8 @@
 import type { Bullet, Enemy, SimEvent, Stats } from './types';
 import { computeStats, IN_RUN_UPGRADES, type Levels } from './stats';
 import { upgradeCost, isMaxed } from './economy';
-import { applyPerks, isPerkWave, rollPerkChoices } from './perks';
+import { applyPerks, isPerkWave, PERK_CONFIG, rollPerkChoices } from './perks';
+import { applyCardStatMods, emptyMods, type RunMods } from './cards';
 import { mulberry32 } from './rng';
 import {
   ENEMY_TYPES,
@@ -16,6 +17,7 @@ import {
   waveCoinBonus,
   waveComposition,
 } from './waves';
+import { zoneForWave } from './zones';
 
 export const TICK_DT = 1 / 30;
 export const ARENA_RADIUS = 330;
@@ -47,13 +49,16 @@ export interface SimState {
   perks: string[];
   /** 待選擇的 Perk 三選一；非 null 時模擬暫停，等 choosePerk() */
   pendingPerks: string[] | null;
+  /** 本場裝備卡片組出的加成（整場固定） */
+  mods: RunMods;
   /** 本 tick 的視覺事件；step() 開頭清空，故 headless 模擬不會無限成長 */
   events: SimEvent[];
 }
 
-export function newRun(workshopLevels: Levels, seed: number): SimState {
+export function newRun(workshopLevels: Levels, seed: number, mods: RunMods = emptyMods()): SimState {
   const inRunLevels: Levels = {};
   const stats = computeStats(workshopLevels, inRunLevels);
+  applyCardStatMods(stats, mods.statMods);
   const rng = mulberry32(seed);
   return {
     wave: 1,
@@ -77,6 +82,7 @@ export function newRun(workshopLevels: Levels, seed: number): SimState {
     nextEnemyId: 1,
     perks: [],
     pendingPerks: null,
+    mods,
     events: [],
   };
 }
@@ -113,6 +119,10 @@ function killEnemy(s: SimState, e: Enemy): void {
   s.cash += e.cashValue * s.stats.cashPerKill;
   s.coinsEarned += e.coinValue * s.stats.coinBonus;
   s.kills++;
+  // 吸血卡：擊殺回復血量上限的比例
+  if (s.mods.lifestealFrac > 0) {
+    s.towerHp = Math.min(s.towerHp + s.mods.lifestealFrac * s.stats.maxHealth, s.stats.maxHealth);
+  }
   s.events.push({ type: 'kill', x: e.x, y: e.y, typeId: e.typeId });
   const i = s.enemies.indexOf(e);
   if (i >= 0) s.enemies.splice(i, 1);
@@ -120,6 +130,10 @@ function killEnemy(s: SimState, e: Enemy): void {
 
 function startNextWave(s: SimState): void {
   s.cash += s.stats.cashPerWave;
+  // 利息卡：按目前現金比例生息（上限避免滾雪球失控）
+  if (s.mods.interest > 0) {
+    s.cash += Math.min(s.cash * s.mods.interest, s.stats.cashPerWave * 10);
+  }
   s.coinsEarned += waveCoinBonus(s.wave) * s.stats.coinBonus;
   s.wave++;
   s.spawnList = waveComposition(s.wave, s.rng);
@@ -127,7 +141,7 @@ function startNextWave(s: SimState): void {
   s.spawnTimer = 0;
   s.events.push({ type: 'wave', wave: s.wave, boss: isBossWave(s.wave) });
   if (isPerkWave(s.wave)) {
-    const choices = rollPerkChoices(s.perks, s.rng);
+    const choices = rollPerkChoices(s.perks, s.rng, PERK_CONFIG.choices + s.mods.extraPerkChoices);
     if (choices.length > 0) {
       s.pendingPerks = choices;
       s.events.push({ type: 'perkOffer', wave: s.wave, choices });
@@ -140,6 +154,7 @@ function recomputeStats(s: SimState): void {
   const prevMax = s.stats.maxHealth;
   const next = computeStats(s.workshopLevels, s.inRunLevels);
   applyPerks(next, s.perks);
+  applyCardStatMods(next, s.mods.statMods);
   s.stats = next;
   if (next.maxHealth > prevMax) s.towerHp += next.maxHealth - prevMax;
   s.towerHp = Math.min(s.towerHp, next.maxHealth);
@@ -175,7 +190,9 @@ export function step(s: SimState, dt: number): void {
     const contact = TOWER_RADIUS + e.radius;
     const standoff = Math.max(contact, e.attackRange);
     if (dist > standoff) {
-      const move = Math.min(e.speed * dt, dist - standoff);
+      // 慢速靈氣卡：射程內的敵人減速
+      const slow = s.mods.slowAura > 0 && dist <= s.stats.range ? 1 - s.mods.slowAura : 1;
+      const move = Math.min(e.speed * slow * dt, dist - standoff);
       e.x -= (e.x / dist) * move;
       e.y -= (e.y / dist) * move;
       e.attackTimer = 0;
@@ -185,6 +202,12 @@ export function step(s: SimState, dt: number): void {
         s.towerHp -= e.dmg;
         s.events.push({ type: 'towerHit', dmg: e.dmg });
         if (e.attackRange > 0) s.events.push({ type: 'enemyShot', x: e.x, y: e.y });
+        // 荊棘反傷卡：近戰攻擊者受到一部分傷害反彈
+        if (s.mods.thorns > 0 && e.attackRange === 0) {
+          e.hp -= e.dmg * s.mods.thorns;
+          s.events.push({ type: 'hit', id: e.id, x: e.x, y: e.y, dmg: e.dmg * s.mods.thorns, crit: false });
+          if (e.hp <= 0) killEnemy(s, e);
+        }
         e.attackTimer += ENEMY_ATTACK_INTERVAL;
       }
     }
@@ -250,10 +273,31 @@ export function step(s: SimState, dt: number): void {
     const dist = Math.hypot(dx, dy);
     const travel = b.speed * dt;
     if (dist <= travel + target.radius) {
-      target.hp -= b.dmg;
-      s.events.push({ type: 'hit', id: target.id, x: target.x, y: target.y, dmg: b.dmg, crit: b.crit });
+      // 命中傷害套用條件卡：頭目剋星、戰區傷害
+      let dmg = b.dmg;
+      if (target.typeId === 'boss' && s.mods.bossDamageMult > 1) dmg *= s.mods.bossDamageMult;
+      const zoneBonus = s.mods.zoneDamage[zoneForWave(s.wave).id] ?? 0;
+      if (zoneBonus > 0) dmg *= 1 + zoneBonus;
+      target.hp -= dmg;
+      s.events.push({ type: 'hit', id: target.id, x: target.x, y: target.y, dmg, crit: b.crit });
       s.bullets.splice(i, 1);
+      const hx = target.x;
+      const hy = target.y;
       if (target.hp <= 0) killEnemy(s, target);
+      // 彈射卡：對最近的其他敵人造成 60% 傷害（確定性：依距離、id 排序）
+      if (s.mods.bounce > 0) {
+        const bounceDmg = dmg * 0.6;
+        const cands = s.enemies
+          .filter((e) => e.id !== b.targetId)
+          .map((e) => ({ e, d: (e.x - hx) * (e.x - hx) + (e.y - hy) * (e.y - hy) }))
+          .sort((a, c) => a.d - c.d || a.e.id - c.e.id)
+          .slice(0, s.mods.bounce);
+        for (const { e } of cands) {
+          e.hp -= bounceDmg;
+          s.events.push({ type: 'hit', id: e.id, x: e.x, y: e.y, dmg: bounceDmg, crit: false });
+          if (e.hp <= 0) killEnemy(s, e);
+        }
+      }
     } else {
       b.x += (dx / dist) * travel;
       b.y += (dy / dist) * travel;

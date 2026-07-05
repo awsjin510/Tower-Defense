@@ -1,6 +1,6 @@
 import type { Levels } from '../core/stats';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 const SAVE_KEY = 'tower-defense-save';
 
 export interface SaveData {
@@ -18,6 +18,12 @@ export interface SaveData {
   lastSeenAt: number;
   /** 穩定的本機帳號代碼（16 位大寫十六進位）：帳戶識別、Email 連動、客服查詢用（v4 起） */
   playerId: string;
+  /** 卡片星級：id → 星等（0 未擁有、1~3 星）（v5 起） */
+  cards: Record<string, number>;
+  /** 已裝備的卡片 id（上限 = cardSlots）（v5 起） */
+  equipped: string[];
+  /** 已解鎖的卡槽數（v5 起） */
+  cardSlots: number;
 }
 
 export function defaultSave(): SaveData {
@@ -32,6 +38,9 @@ export function defaultSave(): SaveData {
     coinRate: 0,
     lastSeenAt: 0,
     playerId: '',
+    cards: {},
+    equipped: [],
+    cardSlots: 2,
   };
 }
 
@@ -58,6 +67,7 @@ export function migrate(raw: unknown): SaveData {
   // 未來版本的遷移在這裡逐段加：if (data.version === 1) { ...; data.version = 2 }
   // v2 → v3：coinRate / lastSeenAt 由 defaultSave 補 0，首次上線不結算離線收益。
   // v3 → v4：playerId 由 defaultSave 補 ''，首次開啟由 ensurePlayerId 產生。
+  // v4 → v5：cards / equipped / cardSlots 由 defaultSave 補預設（無卡、2 槽）。
   data.version = SAVE_VERSION;
   return data;
 }
@@ -69,7 +79,11 @@ export interface SaveStore {
 
 /** 保留同一個物件參考，讓已綁定 UI 的程式可以安全套用雲端存檔。 */
 export function applySave(target: SaveData, source: SaveData): void {
-  Object.assign(target, source, { workshopLevels: { ...source.workshopLevels } });
+  Object.assign(target, source, {
+    workshopLevels: { ...source.workshopLevels },
+    cards: { ...(source.cards ?? {}) },
+    equipped: [...(source.equipped ?? [])],
+  });
 }
 
 /** 瀏覽器 localStorage 實作；core 測試時可注入記憶體版 */
