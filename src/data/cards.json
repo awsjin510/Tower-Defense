@@ -1,0 +1,24 @@
+{
+  "config": {
+    "baseSlots": 2,
+    "maxSlots": 6,
+    "starMax": 3,
+    "starUpCost": { "2": 300, "3": 900 },
+    "slotCost": { "3": 800, "4": 2400, "5": 6500, "6": 16000 }
+  },
+  "cards": [
+    { "id": "as",         "name": "攻擊速度",   "cat": "stat", "icon": "⚡", "color": "#e05580", "unlockWave": 0,  "effect": { "kind": "stat", "stat": "attackSpeed", "mode": "mult", "perStar": 0.08 } },
+    { "id": "hp",         "name": "生命",       "cat": "stat", "icon": "❤️", "color": "#e3b341", "unlockWave": 0,  "effect": { "kind": "stat", "stat": "maxHealth",   "mode": "mult", "perStar": 0.12 } },
+    { "id": "coin",       "name": "金幣",       "cat": "stat", "icon": "🪙", "color": "#e3b341", "unlockWave": 0,  "effect": { "kind": "stat", "stat": "coinBonus",   "mode": "mult", "perStar": 0.12 } },
+    { "id": "range",      "name": "範圍",       "cat": "stat", "icon": "🎯", "color": "#58c6ff", "unlockWave": 4,  "effect": { "kind": "stat", "stat": "range",       "mode": "mult", "perStar": 0.10 } },
+    { "id": "crit",       "name": "爆擊率",     "cat": "stat", "icon": "💥", "color": "#e05580", "unlockWave": 7,  "effect": { "kind": "stat", "stat": "critChance",  "mode": "add",  "perStar": 0.03 } },
+    { "id": "bounce",     "name": "彈射",       "cat": "rule", "icon": "🔀", "color": "#b878ff", "unlockWave": 11, "effect": { "kind": "bounce",    "perStar": 1 } },
+    { "id": "lifesteal",  "name": "擊殺回血",   "cat": "rule", "icon": "🩸", "color": "#56d364", "unlockWave": 14, "effect": { "kind": "lifesteal", "perStar": 0.02 } },
+    { "id": "slowaura",   "name": "慢速靈氣",   "cat": "rule", "icon": "🐌", "color": "#56d364", "unlockWave": 18, "effect": { "kind": "slowAura",  "perStar": 0.12 } },
+    { "id": "interest",   "name": "利息",       "cat": "rule", "icon": "🏦", "color": "#e3b341", "unlockWave": 22, "effect": { "kind": "interest",  "perStar": 0.03 } },
+    { "id": "thorns",     "name": "荊棘反傷",   "cat": "rule", "icon": "🌵", "color": "#58c6ff", "unlockWave": 26, "effect": { "kind": "thorns",    "perStar": 0.2 } },
+    { "id": "bossbane",   "name": "頭目剋星",   "cat": "cond", "icon": "☠️", "color": "#ff6b3d", "unlockWave": 30, "effect": { "kind": "bossDamage", "perStar": 0.3 } },
+    { "id": "strategist", "name": "策士",       "cat": "cond", "icon": "🃏", "color": "#b878ff", "unlockWave": 35, "effect": { "kind": "extraPerk",  "perStar": 1 } },
+    { "id": "voidreaver", "name": "虛空掠奪者", "cat": "cond", "icon": "🌀", "color": "#b878ff", "unlockWave": 40, "effect": { "kind": "zoneDamage", "zoneId": "void", "perStar": 0.25 } }
+  ]
+}

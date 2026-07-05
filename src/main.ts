@@ -4,6 +4,17 @@ import { formatNumber, isMaxed, upgradeCost } from './core/economy';
 import { perkById } from './core/perks';
 import { offlineCoins } from './core/offline';
 import { isZoneEntryWave, zoneForWave } from './core/zones';
+import { CARDS, CARD_CONFIG, buildRunMods, cardById, describeCard } from './core/cards';
+import {
+  buyStarUp,
+  buySlot,
+  cardStar,
+  pruneEquipped,
+  slotUnlockCost,
+  starUpCost,
+  syncCardUnlocks,
+  toggleEquip,
+} from './meta/cards';
 import type { StatId, UpgradeCategory, UpgradeDef } from './core/types';
 import { applySave, ensurePlayerId, localStorageStore, type SaveData } from './meta/save';
 import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
@@ -17,6 +28,9 @@ const store = localStorageStore();
 const save: SaveData = store.load();
 // 帳號代碼：首次開啟時產生（記憶體），下次任何存檔時一併持久化，避免多寫一次而干擾雲端衝突判定
 ensurePlayerId(save);
+// 卡片：依歷史最高波次補齊里程碑解鎖（由 bestWave 推導，不需強制寫檔），清理無效裝備
+syncCardUnlocks(save);
+pruneEquipped(save);
 let cloudUser: User | null = null;
 let cloudModule: CloudModule | null = null;
 let cloudReady = false;
@@ -227,9 +241,164 @@ function refreshWorkshop(): void {
 function showWorkshop(): void {
   sim = null;
   workshopScreen.classList.add('active');
+  cardsScreen.classList.remove('active');
   battleScreen.classList.remove('active');
   $('#results').classList.remove('active');
+  setMetaNav('workshop');
   refreshWorkshop();
+}
+
+// ---------- 卡片畫面 ----------
+
+const cardsScreen = $('#cards-screen');
+
+function setMetaNav(active: 'workshop' | 'cards'): void {
+  for (const b of document.querySelectorAll<HTMLButtonElement>('.meta-nav button')) {
+    b.classList.toggle('active', b.dataset.meta === active);
+  }
+}
+
+function showCards(): void {
+  sim = null;
+  cardsScreen.classList.add('active');
+  workshopScreen.classList.remove('active');
+  battleScreen.classList.remove('active');
+  $('#results').classList.remove('active');
+  setMetaNav('cards');
+  refreshCards();
+}
+
+/** 一張卡片格：擁有→顯示效果＋裝備/升星；未解鎖→鎖頭＋解鎖波次 */
+function makeCardCell(id: string): HTMLElement {
+  const cell = document.createElement('div');
+  cell.className = 'card-cell';
+  cell.dataset.card = id;
+  return cell;
+}
+
+function starDots(star: number, max: number): string {
+  let out = '';
+  for (let i = 0; i < max; i++) out += i < star ? '★' : '☆';
+  return out;
+}
+
+function refreshCardCell(cell: HTMLElement): void {
+  const id = cell.dataset.card!;
+  const def = cardById(id)!;
+  const star = cardStar(save, id);
+  const owned = star > 0;
+  const equipped = save.equipped.includes(id);
+  cell.classList.toggle('owned', owned);
+  cell.classList.toggle('equipped', equipped);
+  cell.classList.toggle('locked', !owned);
+  if (!owned) {
+    cell.innerHTML = `
+      <div class="card-art locked-art">🔒</div>
+      <div class="card-name">${def.name}</div>
+      <div class="card-sub">波次 ${def.unlockWave} 解鎖</div>`;
+    return;
+  }
+  const cost = starUpCost(star);
+  const canStar = cost !== null;
+  cell.style.setProperty('--card-color', def.color);
+  cell.innerHTML = `
+    <div class="card-art" style="background:linear-gradient(160deg, ${def.color}44, ${def.color}11)">
+      <span class="card-icon">${def.icon}</span>
+      <span class="card-stars">${starDots(star, CARD_CONFIG.starMax)}</span>
+    </div>
+    <div class="card-name">${def.name}</div>
+    <div class="card-sub">${describeCard(def, star)}</div>
+    <div class="card-actions">
+      <button class="card-equip">${equipped ? '卸下' : '裝備'}</button>
+      <button class="card-star" ${canStar && save.coins >= (cost as number) ? '' : 'disabled'}>${
+        canStar ? `升星 🪙${formatNumber(cost as number)}` : 'MAX'
+      }</button>
+    </div>`;
+  (cell.querySelector('.card-equip') as HTMLButtonElement).addEventListener('click', () => {
+    if (!equipped && save.equipped.length >= save.cardSlots && cardStar(save, id) > 0) {
+      // 沒空槽時給提示
+      flashSlots();
+      return;
+    }
+    toggleEquip(save, id);
+    saveProgress();
+    refreshCards();
+  });
+  (cell.querySelector('.card-star') as HTMLButtonElement).addEventListener('click', () => {
+    if (buyStarUp(save, id)) {
+      saveProgress();
+      refreshCards();
+    }
+  });
+}
+
+let slotsFlash = 0;
+function flashSlots(): void {
+  slotsFlash = 1;
+  refreshCards();
+  setTimeout(() => {
+    slotsFlash = 0;
+    if (cardsScreen.classList.contains('active')) refreshCards();
+  }, 600);
+}
+
+function refreshCards(): void {
+  refreshWorkshop(); // 共用頂欄（金幣/最高波次/場數）
+
+  // 裝備列：已用/總槽位 + 各槽內容 + 解鎖新槽位
+  const slotWrap = $('#card-loadout');
+  const cost = slotUnlockCost(save);
+  $('#card-loadout-label').innerHTML =
+    `裝備 <b class="${slotsFlash ? 'flash' : ''}">${save.equipped.length}/${save.cardSlots}</b> · 槽位有限，取捨你的流派`;
+  slotWrap.innerHTML = '';
+  for (let i = 0; i < save.cardSlots; i++) {
+    const id = save.equipped[i];
+    const slot = document.createElement('div');
+    slot.className = id ? 'loadout-slot filled' : 'loadout-slot';
+    if (id) {
+      const def = cardById(id)!;
+      slot.style.borderColor = def.color;
+      slot.innerHTML = `<span class="slot-icon">${def.icon}</span><span class="slot-name">${def.name} ${starDots(
+        cardStar(save, id),
+        CARD_CONFIG.starMax
+      )}</span>`;
+      slot.addEventListener('click', () => {
+        toggleEquip(save, id);
+        saveProgress();
+        refreshCards();
+      });
+    } else {
+      slot.innerHTML = '<span class="slot-empty">＋</span>';
+    }
+    slotWrap.appendChild(slot);
+  }
+  if (cost !== null) {
+    const unlock = document.createElement('button');
+    unlock.className = 'slot-unlock';
+    unlock.disabled = save.coins < cost;
+    unlock.innerHTML = `🔓 解鎖新槽位<br>🪙${formatNumber(cost)}`;
+    unlock.addEventListener('click', () => {
+      if (buySlot(save)) {
+        saveProgress();
+        refreshCards();
+      }
+    });
+    slotWrap.appendChild(unlock);
+  }
+
+  // 庫存：全部卡片（擁有在前、已解鎖依波次、鎖住在後）
+  const inv = $('#card-inventory');
+  inv.innerHTML = '';
+  const ordered = [...CARDS].sort((a, b) => {
+    const oa = cardStar(save, a.id) > 0 ? 0 : 1;
+    const ob = cardStar(save, b.id) > 0 ? 0 : 1;
+    return oa - ob || a.unlockWave - b.unlockWave;
+  });
+  for (const def of ordered) {
+    const cell = makeCardCell(def.id);
+    inv.appendChild(cell);
+    refreshCardCell(cell);
+  }
 }
 
 // ---------- 戰鬥畫面 ----------
@@ -607,7 +776,8 @@ $('#account-copy').addEventListener('click', async () => {
 });
 
 function startBattle(): void {
-  sim = newRun(save.workshopLevels, (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
+  const mods = buildRunMods(save.equipped, (id) => cardStar(save, id));
+  sim = newRun(save.workshopLevels, (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0, mods);
   resultsShown = false;
   perkOverlay.classList.remove('active');
   dispCash = 0;
@@ -638,9 +808,15 @@ function rollNumber(el: HTMLElement, target: number, dur: number, prefix: string
 function showResults(s: SimState): void {
   const isRecord = s.wave > save.bestWave;
   settleRun(save, { wave: s.wave, coinsEarned: s.coinsEarned, kills: s.kills, timeSec: s.time });
+  // 這一場刷新紀錄後可能解鎖新卡片
+  const newCards = syncCardUnlocks(save);
   saveProgress();
+  const unlockedLine = newCards.length
+    ? `<div class="record">🃏 解鎖新卡片：${newCards.map((id) => cardById(id)?.name ?? id).join('、')}</div>`
+    : '';
   $('#results-rows').innerHTML = `
     ${isRecord ? '<div class="record">🏆 新紀錄！</div>' : ''}
+    ${unlockedLine}
     <div class="row"><span class="label">到達波次</span><span class="value">${s.wave}</span></div>
     <div class="row"><span class="label">擊殺數</span><span class="value">${formatNumber(s.kills)}</span></div>
     <div class="row"><span class="label">獲得金幣</span><span class="value coin" data-coinroll>+🪙 0</span></div>
@@ -695,6 +871,11 @@ function frame(now: number): void {
 
 $('#start-btn').addEventListener('click', startBattle);
 $('#results-btn').addEventListener('click', showWorkshop);
+
+// 工坊 / 卡片 分頁切換
+for (const b of document.querySelectorAll<HTMLButtonElement>('.meta-nav button')) {
+  b.addEventListener('click', () => (b.dataset.meta === 'cards' ? showCards() : showWorkshop()));
+}
 
 showWorkshop();
 checkOfflineEarnings();

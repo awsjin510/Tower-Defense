@@ -43,11 +43,12 @@ export function isPerkWave(wave: number): boolean {
   return wave > 1 && wave % PERK_CONFIG.offerEvery === 0;
 }
 
-/** 擲出三選一：從尚未取得的 Perk 池抽（不重複），池不足時給剩餘全部 */
-export function rollPerkChoices(taken: string[], rng: () => number): string[] {
+/** 擲出三選一：從尚未取得的 Perk 池抽（不重複），池不足時給剩餘全部。
+ * count 可由卡片（策士）加成，預設為設定值。 */
+export function rollPerkChoices(taken: string[], rng: () => number, count = PERK_CONFIG.choices): string[] {
   const pool = PERKS.filter((p) => !taken.includes(p.id)).map((p) => p.id);
   const picks: string[] = [];
-  while (picks.length < PERK_CONFIG.choices && pool.length > 0) {
+  while (picks.length < count && pool.length > 0) {
     picks.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
   }
   return picks;
