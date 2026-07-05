@@ -1,7 +1,14 @@
 import type { Levels } from '../core/stats';
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 const SAVE_KEY = 'tower-defense-save';
+
+/** 進行中的研究：以真實時間計，離線也在推進 */
+export interface ActiveResearch {
+  id: string;
+  startedAt: number;
+  completesAt: number;
+}
 
 export interface SaveData {
   version: number;
@@ -24,6 +31,10 @@ export interface SaveData {
   equipped: string[];
   /** 已解鎖的卡槽數（v5 起） */
   cardSlots: number;
+  /** 研究等級：id → 等級（v6 起） */
+  researchLevels: Record<string, number>;
+  /** 進行中的研究（單一佇列）；null 表示閒置（v6 起） */
+  activeResearch: ActiveResearch | null;
 }
 
 export function defaultSave(): SaveData {
@@ -41,6 +52,8 @@ export function defaultSave(): SaveData {
     cards: {},
     equipped: [],
     cardSlots: 2,
+    researchLevels: {},
+    activeResearch: null,
   };
 }
 
@@ -68,6 +81,7 @@ export function migrate(raw: unknown): SaveData {
   // v2 → v3：coinRate / lastSeenAt 由 defaultSave 補 0，首次上線不結算離線收益。
   // v3 → v4：playerId 由 defaultSave 補 ''，首次開啟由 ensurePlayerId 產生。
   // v4 → v5：cards / equipped / cardSlots 由 defaultSave 補預設（無卡、2 槽）。
+  // v5 → v6：researchLevels / activeResearch 由 defaultSave 補預設（無研究、閒置）。
   data.version = SAVE_VERSION;
   return data;
 }
@@ -83,6 +97,8 @@ export function applySave(target: SaveData, source: SaveData): void {
     workshopLevels: { ...source.workshopLevels },
     cards: { ...(source.cards ?? {}) },
     equipped: [...(source.equipped ?? [])],
+    researchLevels: { ...(source.researchLevels ?? {}) },
+    activeResearch: source.activeResearch ? { ...source.activeResearch } : null,
   });
 }
 

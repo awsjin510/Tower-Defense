@@ -15,6 +15,21 @@ import {
   syncCardUnlocks,
   toggleEquip,
 } from './meta/cards';
+import {
+  RESEARCH,
+  isResearchMaxed,
+  researchById,
+  researchCost,
+  researchTimeSec,
+  researchValue,
+} from './core/research';
+import {
+  collectResearch,
+  researchLevel,
+  researchProgress,
+  researchRemainingSec,
+  startResearch,
+} from './meta/research';
 import type { StatId, UpgradeCategory, UpgradeDef } from './core/types';
 import { applySave, ensurePlayerId, localStorageStore, type SaveData } from './meta/save';
 import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
@@ -31,6 +46,9 @@ ensurePlayerId(save);
 // 卡片：依歷史最高波次補齊里程碑解鎖（由 bestWave 推導，不需強制寫檔），清理無效裝備
 syncCardUnlocks(save);
 pruneEquipped(save);
+// 研究：開啟時結算離線期間已完成的研究（真實時間），完成則立即寫回避免遺失
+const offlineResearch = collectResearch(save, Date.now());
+if (offlineResearch) store.save(save);
 let cloudUser: User | null = null;
 let cloudModule: CloudModule | null = null;
 let cloudReady = false;
@@ -231,8 +249,8 @@ function refreshWorkshop(): void {
     <div class="stat"><span class="label">最高波次</span><span class="value">${save.bestWave}</span></div>
     <div class="stat"><span class="label">總場數</span><span class="value">${save.totalRuns}</span></div>
     <div class="spacer"></div>`;
-  // 工坊顯示「每場開局」的屬性值（永久升級套用後、尚未買場內升級時的起點）
-  const startStats = computeStats(save.workshopLevels, {});
+  // 工坊顯示「每場開局」的屬性值（永久升級 + 研究套用後、尚未買場內升級時的起點）
+  const startStats = computeStats(save.workshopLevels, {}, save.researchLevels);
   for (const btn of workshopButtons) {
     refreshUpgradeButton(btn, save.workshopLevels[btn.def.id] ?? 0, save.coins, 'coin', startStats[btn.def.stat]);
   }
@@ -242,6 +260,7 @@ function showWorkshop(): void {
   sim = null;
   workshopScreen.classList.add('active');
   cardsScreen.classList.remove('active');
+  researchScreen.classList.remove('active');
   battleScreen.classList.remove('active');
   $('#results').classList.remove('active');
   setMetaNav('workshop');
@@ -251,8 +270,9 @@ function showWorkshop(): void {
 // ---------- 卡片畫面 ----------
 
 const cardsScreen = $('#cards-screen');
+const researchScreen = $('#research-screen');
 
-function setMetaNav(active: 'workshop' | 'cards'): void {
+function setMetaNav(active: 'workshop' | 'cards' | 'research'): void {
   for (const b of document.querySelectorAll<HTMLButtonElement>('.meta-nav button')) {
     b.classList.toggle('active', b.dataset.meta === active);
   }
@@ -262,6 +282,7 @@ function showCards(): void {
   sim = null;
   cardsScreen.classList.add('active');
   workshopScreen.classList.remove('active');
+  researchScreen.classList.remove('active');
   battleScreen.classList.remove('active');
   $('#results').classList.remove('active');
   setMetaNav('cards');
@@ -400,6 +421,113 @@ function refreshCards(): void {
     refreshCardCell(cell);
   }
 }
+
+// ---------- 研究室畫面 ----------
+
+function showResearch(): void {
+  sim = null;
+  researchScreen.classList.add('active');
+  workshopScreen.classList.remove('active');
+  cardsScreen.classList.remove('active');
+  battleScreen.classList.remove('active');
+  $('#results').classList.remove('active');
+  setMetaNav('research');
+  refreshResearch();
+}
+
+function fmtDuration(sec: number): string {
+  if (sec >= 3600) return `${Math.floor(sec / 3600)}時${Math.floor((sec % 3600) / 60)}分`;
+  if (sec >= 60) return `${Math.floor(sec / 60)}分${sec % 60}秒`;
+  return `${sec}秒`;
+}
+
+function fmtResearchStat(stat: string, v: number): string {
+  switch (stat) {
+    case 'critChance':
+      return `+${(v * 100).toFixed(1)}%`;
+    case 'attackSpeed':
+    case 'coinBonus':
+      return `+${v.toFixed(2)}`;
+    case 'healthRegen':
+      return `+${v.toFixed(1)}`;
+    default:
+      return `+${formatNumber(v)}`;
+  }
+}
+
+/** 整塊重建研究列表（開始/收成/切換分頁時）；倒數則由 tick 就地更新 */
+function refreshResearch(): void {
+  refreshWorkshop(); // 共用頂欄
+  const list = $('#research-list');
+  list.innerHTML = '';
+  const busy = save.activeResearch !== null;
+  for (const def of RESEARCH) {
+    const level = researchLevel(save, def.id);
+    const maxed = isResearchMaxed(def, level);
+    const isActive = save.activeResearch?.id === def.id;
+    const cost = researchCost(def, level);
+    const timeSec = researchTimeSec(def, level);
+
+    const row = document.createElement('div');
+    row.className = 'research-row' + (isActive ? ' active' : busy ? ' busy-other' : '');
+    row.dataset.research = def.id;
+
+    const cur = researchValue(def, level);
+    const nextGain = fmtResearchStat(def.stat, def.valuePerLevel);
+    const curText = level > 0 ? `目前 ${fmtResearchStat(def.stat, cur)}` : '尚未研究';
+
+    let ctaHtml: string;
+    if (isActive) {
+      ctaHtml = `<div class="research-timer" data-timer>—</div>`;
+    } else if (maxed) {
+      ctaHtml = `<button disabled>MAX</button>`;
+    } else {
+      const afford = !busy && save.coins >= cost;
+      ctaHtml = `<button class="start" ${afford ? '' : 'disabled'}>開始<br>🪙${formatNumber(cost)}</button>`;
+    }
+
+    row.innerHTML = `
+      <div class="research-icon" style="background:linear-gradient(160deg, ${def.color}44, ${def.color}11)">${def.icon}</div>
+      <div class="research-body">
+        <div class="research-name">${def.name}<span class="lv">Lv.${level}${maxed ? ' MAX' : ''}</span></div>
+        <div class="research-sub">${curText} · 下一級 ${nextGain} · ⏱ ${fmtDuration(timeSec)}</div>
+        ${isActive ? '<div class="research-bar"><span data-bar style="width:0%"></span></div>' : ''}
+      </div>
+      <div class="research-cta">${ctaHtml}</div>`;
+
+    if (!isActive && !maxed) {
+      (row.querySelector('.research-cta button') as HTMLButtonElement)?.addEventListener('click', () => {
+        if (startResearch(save, def.id, Date.now())) {
+          saveProgress();
+          refreshResearch();
+        }
+      });
+    }
+    list.appendChild(row);
+  }
+  tickResearch(); // 立即填入倒數/進度
+}
+
+/** 每秒就地更新倒數與進度，並在完成時自動收成 */
+function tickResearch(): void {
+  if (!save.activeResearch) return;
+  const now = Date.now();
+  const done = collectResearch(save, now);
+  if (done) {
+    saveProgress();
+    if (researchScreen.classList.contains('active')) refreshResearch();
+    return;
+  }
+  if (!researchScreen.classList.contains('active')) return;
+  const remain = researchRemainingSec(save, now);
+  const prog = researchProgress(save, now);
+  const timerEl = document.querySelector('[data-timer]') as HTMLElement | null;
+  const barEl = document.querySelector('[data-bar]') as HTMLElement | null;
+  if (timerEl) timerEl.textContent = fmtDuration(remain);
+  if (barEl) barEl.style.width = `${Math.round(prog * 100)}%`;
+}
+
+setInterval(tickResearch, 1000);
 
 // ---------- 戰鬥畫面 ----------
 
@@ -563,17 +691,30 @@ function checkOfflineEarnings(): void {
   const now = Date.now();
   const elapsedSec = (now - save.lastSeenAt) / 1000;
   const gained = save.lastSeenAt > 0 ? offlineCoins(save.coinRate, elapsedSec) : 0;
-  if (gained < 1) return;
-  save.coins += gained;
-  saveProgress();
+  // 離線期間完成的研究（load 時已 collectResearch 結算）也在此一併告知
+  const doneDef = offlineResearch ? researchById(offlineResearch) : undefined;
+  if (gained < 1 && !doneDef) return;
+  if (gained >= 1) {
+    save.coins += gained;
+    saveProgress();
+  }
   const hours = Math.floor(elapsedSec / 3600);
   const mins = Math.floor((elapsedSec % 3600) / 60);
   const durText = hours > 0 ? `${hours} 小時 ${mins} 分` : `${mins} 分鐘`;
+  const researchRow = doneDef
+    ? `<div class="row"><span class="label">完成研究</span><span class="value">${doneDef.icon} ${doneDef.name} Lv.${researchLevel(save, doneDef.id)}</span></div>`
+    : '';
+  const coinRow =
+    gained >= 1
+      ? `<div class="row"><span class="label">獲得金幣</span><span class="value coin" data-offroll>+🪙 0</span></div>`
+      : '';
   $('#offline-rows').innerHTML = `
     <div class="row"><span class="label">離線時間</span><span class="value">${durText}</span></div>
-    <div class="row"><span class="label">獲得金幣</span><span class="value coin" data-offroll>+🪙 0</span></div>`;
+    ${coinRow}${researchRow}`;
   $('#offline-modal').classList.add('active');
-  rollNumber($('#offline-rows').querySelector('[data-offroll]') as HTMLElement, gained, 0.8, '+🪙 ');
+  if (gained >= 1) {
+    rollNumber($('#offline-rows').querySelector('[data-offroll]') as HTMLElement, gained, 0.8, '+🪙 ');
+  }
 }
 
 $('#offline-btn').addEventListener('click', () => {
@@ -777,7 +918,7 @@ $('#account-copy').addEventListener('click', async () => {
 
 function startBattle(): void {
   const mods = buildRunMods(save.equipped, (id) => cardStar(save, id));
-  sim = newRun(save.workshopLevels, (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0, mods);
+  sim = newRun(save.workshopLevels, (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0, mods, save.researchLevels);
   resultsShown = false;
   perkOverlay.classList.remove('active');
   dispCash = 0;
@@ -872,9 +1013,13 @@ function frame(now: number): void {
 $('#start-btn').addEventListener('click', startBattle);
 $('#results-btn').addEventListener('click', showWorkshop);
 
-// 工坊 / 卡片 分頁切換
+// 工坊 / 卡片 / 研究 分頁切換
 for (const b of document.querySelectorAll<HTMLButtonElement>('.meta-nav button')) {
-  b.addEventListener('click', () => (b.dataset.meta === 'cards' ? showCards() : showWorkshop()));
+  b.addEventListener('click', () => {
+    if (b.dataset.meta === 'cards') showCards();
+    else if (b.dataset.meta === 'research') showResearch();
+    else showWorkshop();
+  });
 }
 
 showWorkshop();

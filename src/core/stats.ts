@@ -1,5 +1,6 @@
 import type { Stats, UpgradeDef } from './types';
 import { upgradeValue } from './economy';
+import { applyResearch } from './research';
 import upgradesData from '../data/upgrades.json';
 
 export const IN_RUN_UPGRADES = upgradesData.inRun as UpgradeDef[];
@@ -22,10 +23,10 @@ export const BASE_STATS: Stats = {
 export type Levels = Record<string, number>;
 
 /**
- * 屬性 = 基礎值 + 工坊永久加成 + 場內升級加成。
+ * 屬性 = 基礎值 + 工坊永久加成 + 研究永久加成 + 場內升級加成。
  * 存檔只存等級，屬性一律重算 —— 改平衡表後舊存檔自動生效。
  */
-export function computeStats(workshopLevels: Levels, inRunLevels: Levels): Stats {
+export function computeStats(workshopLevels: Levels, inRunLevels: Levels, researchLevels: Levels = {}): Stats {
   const stats: Stats = { ...BASE_STATS };
   for (const def of WORKSHOP_UPGRADES) {
     stats[def.stat] += upgradeValue(def, workshopLevels[def.id] ?? 0);
@@ -33,6 +34,7 @@ export function computeStats(workshopLevels: Levels, inRunLevels: Levels): Stats
   for (const def of IN_RUN_UPGRADES) {
     stats[def.stat] += upgradeValue(def, inRunLevels[def.id] ?? 0);
   }
+  applyResearch(stats, researchLevels);
   stats.critChance = Math.min(stats.critChance, 0.8);
   return stats;
 }
