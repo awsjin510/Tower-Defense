@@ -87,3 +87,14 @@ export interface Bullet {
   dmg: number;
   crit: boolean;
 }
+
+/**
+ * 短命的視覺事件。step() 每個 tick 開頭清空、過程中推入，UI 於同一 tick 取走轉成特效。
+ * 核心邏輯不保存任何視覺狀態——這些只是「這個 tick 發生了什麼」的資料，維持確定性與可移植性。
+ */
+export type SimEvent =
+  | { type: 'hit'; id: number; x: number; y: number; dmg: number; crit: boolean }
+  | { type: 'kill'; x: number; y: number; typeId: string }
+  | { type: 'wave'; wave: number; boss: boolean }
+  | { type: 'fire'; angle: number }
+  | { type: 'towerHit'; dmg: number };

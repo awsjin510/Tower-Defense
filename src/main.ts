@@ -5,6 +5,7 @@ import type { StatId, UpgradeCategory, UpgradeDef } from './core/types';
 import { applySave, localStorageStore, type SaveData } from './meta/save';
 import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
 import { render } from './ui/renderer';
+import { Vfx } from './ui/vfx';
 import type { User } from 'firebase/auth';
 
 type CloudModule = typeof import('./cloud/firebase');
@@ -25,6 +26,7 @@ let sim: SimState | null = null;
 let speed = 1;
 let activeTab: UpgradeCategory = 'attack';
 let resultsShown = false;
+const vfx = new Vfx();
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const topbar = $('#topbar');
@@ -149,7 +151,10 @@ function refreshUpgradeButton(btn: UpgradeButton, level: number, currency: numbe
   const costEl = el.querySelector('.cost') as HTMLElement;
   costEl.className = `cost ${currencyClass}`;
   costEl.textContent = maxed ? 'MAX' : formatNumber(cost);
-  el.disabled = maxed || currency < cost;
+  const affordable = !maxed && currency >= cost;
+  el.disabled = !affordable;
+  // 買得起就發亮——放置遊戲最核心的視覺鉤子
+  el.classList.toggle('affordable', affordable);
 }
 
 // ---------- 工坊畫面 ----------
@@ -187,7 +192,7 @@ function showWorkshop(): void {
 
 const battleButtons: UpgradeButton[] = IN_RUN_UPGRADES.map((def) =>
   makeUpgradeButton(def, () => {
-    if (sim && buyInRunUpgrade(sim, def.id)) refreshBattleUI();
+    if (sim && buyInRunUpgrade(sim, def.id)) refreshBattleButtons();
   })
 );
 
@@ -220,45 +225,116 @@ function buildBattleGrid(): void {
   for (const btn of battleButtons) {
     if (btn.def.category === activeTab) grid.appendChild(btn.el);
   }
-  refreshBattleUI();
+  refreshBattleButtons();
 }
 
-function refreshBattleUI(): void {
-  if (!sim) return;
+// 戰鬥頂欄用持久 DOM（每幀更新數字、平滑滾動），不整塊重建
+interface Hud {
+  wave: HTMLElement;
+  cash: HTMLElement;
+  coin: HTMLElement;
+  hp: HTMLElement;
+  speedBtn: HTMLButtonElement;
+}
+let hud: Hud | null = null;
+// 顯示值（朝真實值插值，做出數字滾動效果）
+let dispCash = 0;
+let dispCoin = 0;
+let dispHp = 0;
+
+function buildBattleTopbar(): void {
   topbar.innerHTML = `
-    <div class="stat"><span class="label">波次</span><span class="value">${sim.wave}</span></div>
-    <div class="stat"><span class="label">現金</span><span class="value cash">$ ${formatNumber(sim.cash)}</span></div>
-    <div class="stat"><span class="label">本場金幣</span><span class="value coin">🪙 ${formatNumber(sim.coinsEarned)}</span></div>
-    <div class="stat"><span class="label">血量</span><span class="value">${formatNumber(Math.ceil(sim.towerHp))}/${formatNumber(sim.stats.maxHealth)}</span></div>
+    <div class="stat"><span class="label">波次</span><span class="value" data-wave></span></div>
+    <div class="stat"><span class="label">現金</span><span class="value cash" data-cash></span></div>
+    <div class="stat"><span class="label">本場金幣</span><span class="value coin" data-coin></span></div>
+    <div class="stat"><span class="label">血量</span><span class="value" data-hp></span></div>
     <div class="spacer"></div>
-    <button id="speed-btn">x${speed}</button>`;
-  $('#speed-btn').addEventListener('click', () => {
+    <button id="speed-btn" class="speed-btn">x${speed}</button>`;
+  const speedBtn = $('#speed-btn') as HTMLButtonElement;
+  speedBtn.addEventListener('click', () => {
     speed = speed >= 3 ? 1 : speed + 1;
-    refreshBattleUI();
+    speedBtn.textContent = `x${speed}`;
   });
+  hud = {
+    wave: topbar.querySelector('[data-wave]') as HTMLElement,
+    cash: topbar.querySelector('[data-cash]') as HTMLElement,
+    coin: topbar.querySelector('[data-coin]') as HTMLElement,
+    hp: topbar.querySelector('[data-hp]') as HTMLElement,
+    speedBtn,
+  };
+}
+
+/** 每幀更新頂欄數字（平滑滾動）與血量色 */
+function updateBattleHud(dt: number): void {
+  if (!sim || !hud) return;
+  const k = Math.min(dt * 12, 1);
+  dispCash += (sim.cash - dispCash) * k;
+  dispCoin += (sim.coinsEarned - dispCoin) * k;
+  dispHp += (sim.towerHp - dispHp) * k;
+  hud.wave.textContent = String(sim.wave);
+  hud.cash.textContent = `$ ${formatNumber(dispCash)}`;
+  hud.coin.textContent = `🪙 ${formatNumber(dispCoin)}`;
+  hud.hp.textContent = `${formatNumber(Math.max(Math.ceil(dispHp), 0))}/${formatNumber(sim.stats.maxHealth)}`;
+  const ratio = sim.towerHp / sim.stats.maxHealth;
+  hud.hp.style.color = ratio > 0.35 ? '' : '#f85149';
+}
+
+/** 只刷新升級按鈕（成本/買得起狀態），與頂欄滾動分開 */
+function refreshBattleButtons(): void {
+  if (!sim) return;
   for (const btn of battleButtons) {
     refreshUpgradeButton(btn, sim.inRunLevels[btn.def.id] ?? 0, sim.cash, 'cash');
   }
 }
 
+let bannerTimer = 0;
+function showWaveBanner(wave: number, boss: boolean): void {
+  const banner = $('#wave-banner');
+  banner.textContent = boss ? `⚠ 頭目來襲 · Wave ${wave}` : `Wave ${wave}`;
+  banner.className = boss ? 'show boss' : 'show';
+  bannerTimer = boss ? 2.4 : 1.6;
+}
+
 function startBattle(): void {
   sim = newRun(save.workshopLevels, (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
   resultsShown = false;
+  dispCash = 0;
+  dispCoin = 0;
+  dispHp = sim.stats.maxHealth;
+  vfx.texts.length = 0;
+  vfx.particles.length = 0;
+  vfx.flash.clear();
   workshopScreen.classList.remove('active');
   battleScreen.classList.add('active');
+  buildBattleTopbar();
   buildTabs();
   buildBattleGrid();
 }
 
+/** 數字滾動：dur 秒內從 0 補到 target */
+function rollNumber(el: HTMLElement, target: number, dur: number, prefix: string): void {
+  const start = performance.now();
+  function tick(now: number): void {
+    const t = Math.min((now - start) / (dur * 1000), 1);
+    const eased = 1 - (1 - t) * (1 - t);
+    el.textContent = `${prefix}${formatNumber(target * eased)}`;
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
 function showResults(s: SimState): void {
+  const isRecord = s.wave > save.bestWave;
   settleRun(save, { wave: s.wave, coinsEarned: s.coinsEarned, kills: s.kills });
   saveProgress();
   $('#results-rows').innerHTML = `
+    ${isRecord ? '<div class="record">🏆 新紀錄！</div>' : ''}
     <div class="row"><span class="label">到達波次</span><span class="value">${s.wave}</span></div>
     <div class="row"><span class="label">擊殺數</span><span class="value">${formatNumber(s.kills)}</span></div>
-    <div class="row"><span class="label">獲得金幣</span><span class="value coin">+🪙 ${formatNumber(s.coinsEarned)}</span></div>
+    <div class="row"><span class="label">獲得金幣</span><span class="value coin" data-coinroll>+🪙 0</span></div>
     <div class="row"><span class="label">歷史最高</span><span class="value">${save.bestWave}</span></div>`;
   $('#results').classList.add('active');
+  rollNumber($('#results-rows').querySelector('[data-coinroll]') as HTMLElement, s.coinsEarned, 0.8, '+🪙 ');
 }
 
 // ---------- 主迴圈：固定 tick 模擬 + 每幀渲染 ----------
@@ -275,16 +351,27 @@ function frame(now: number): void {
     accumulator += dt * speed;
     while (accumulator >= TICK_DT) {
       step(sim, TICK_DT);
+      // 取走本 tick 的視覺事件（下個 step 開頭會清空）
+      vfx.ingest(sim.events);
+      for (const e of sim.events) {
+        if (e.type === 'wave') showWaveBanner(e.wave, e.boss);
+      }
       accumulator -= TICK_DT;
     }
+    updateBattleHud(dt);
     uiTimer += dt;
-    if (uiTimer >= 0.15) {
+    if (uiTimer >= 0.1) {
       uiTimer = 0;
-      refreshBattleUI();
+      refreshBattleButtons();
+    }
+    if (bannerTimer > 0) {
+      bannerTimer -= dt;
+      if (bannerTimer <= 0) $('#wave-banner').className = '';
     }
   }
   if (sim) {
-    render(ctx, canvas, sim);
+    vfx.update(dt);
+    render(ctx, canvas, sim, vfx);
     if (sim.over && !resultsShown) {
       resultsShown = true;
       showResults(sim);

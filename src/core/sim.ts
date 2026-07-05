@@ -1,4 +1,4 @@
-import type { Bullet, Enemy, Stats } from './types';
+import type { Bullet, Enemy, SimEvent, Stats } from './types';
 import { computeStats, IN_RUN_UPGRADES, type Levels } from './stats';
 import { upgradeCost, isMaxed } from './economy';
 import { mulberry32 } from './rng';
@@ -10,6 +10,7 @@ import {
   enemyDmg,
   enemyHp,
   enemySpeed,
+  isBossWave,
   spawnIntervalForWave,
   waveCoinBonus,
   waveComposition,
@@ -41,6 +42,8 @@ export interface SimState {
   over: boolean;
   rng: () => number;
   nextEnemyId: number;
+  /** 本 tick 的視覺事件；step() 開頭清空，故 headless 模擬不會無限成長 */
+  events: SimEvent[];
 }
 
 export function newRun(workshopLevels: Levels, seed: number): SimState {
@@ -67,6 +70,7 @@ export function newRun(workshopLevels: Levels, seed: number): SimState {
     over: false,
     rng,
     nextEnemyId: 1,
+    events: [],
   };
 }
 
@@ -94,6 +98,7 @@ function killEnemy(s: SimState, e: Enemy): void {
   s.cash += e.cashValue * s.stats.cashPerKill;
   s.coinsEarned += e.coinValue * s.stats.coinBonus;
   s.kills++;
+  s.events.push({ type: 'kill', x: e.x, y: e.y, typeId: e.typeId });
   const i = s.enemies.indexOf(e);
   if (i >= 0) s.enemies.splice(i, 1);
 }
@@ -105,10 +110,12 @@ function startNextWave(s: SimState): void {
   s.spawnList = waveComposition(s.wave, s.rng);
   s.spawnIdx = 0;
   s.spawnTimer = 0;
+  s.events.push({ type: 'wave', wave: s.wave, boss: isBossWave(s.wave) });
 }
 
 export function step(s: SimState, dt: number): void {
   if (s.over) return;
+  s.events.length = 0;
   s.time += dt;
 
   s.towerHp = Math.min(s.towerHp + s.stats.healthRegen * dt, s.stats.maxHealth);
@@ -140,6 +147,7 @@ export function step(s: SimState, dt: number): void {
       e.attackTimer -= dt;
       if (e.attackTimer <= 0) {
         s.towerHp -= e.dmg;
+        s.events.push({ type: 'towerHit', dmg: e.dmg });
         e.attackTimer += ENEMY_ATTACK_INTERVAL;
       }
     }
@@ -172,6 +180,7 @@ export function step(s: SimState, dt: number): void {
       dmg: s.stats.damage * (crit ? s.stats.critFactor : 1),
       crit,
     });
+    s.events.push({ type: 'fire', angle: Math.atan2(target.y, target.x) });
     s.attackTimer += cooldown;
   }
 
@@ -189,6 +198,7 @@ export function step(s: SimState, dt: number): void {
     const travel = b.speed * dt;
     if (dist <= travel + target.radius) {
       target.hp -= b.dmg;
+      s.events.push({ type: 'hit', id: target.id, x: target.x, y: target.y, dmg: b.dmg, crit: b.crit });
       s.bullets.splice(i, 1);
       if (target.hp <= 0) killEnemy(s, target);
     } else {
