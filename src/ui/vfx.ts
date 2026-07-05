@@ -38,6 +38,13 @@ interface Beam {
   life: number;
 }
 
+/** 終極武器衝擊波環（從塔中心擴散） */
+interface Shock {
+  life: number;
+  maxLife: number;
+  color: string;
+}
+
 /**
  * 純視覺特效層——只吃 SimEvent，不回寫任何遊戲狀態。
  * 命中閃白以敵人 id 為鍵存在這裡，核心的 Enemy 結構保持乾淨。
@@ -47,6 +54,9 @@ export class Vfx {
   particles: Particle[] = [];
   muzzles: Muzzle[] = [];
   beams: Beam[] = [];
+  shocks: Shock[] = [];
+  /** 黃金塔啟用時的金光殘留（秒） */
+  goldGlow = 0;
   flash = new Map<number, number>();
   shake = 0;
   private rand = 0x9e3779b9;
@@ -135,6 +145,13 @@ export class Vfx {
           }
           break;
         }
+        case 'ultNuke':
+          this.shocks.push({ life: 0.6, maxLife: 0.6, color: e.color || '#b878ff' });
+          this.shake = Math.min(this.shake + 8, 12);
+          break;
+        case 'ultActivate':
+          this.goldGlow = Math.max(this.goldGlow, 0.6);
+          break;
         // 'wave' / 'perkOffer' 由 UI 另行處理
       }
     }
@@ -165,6 +182,11 @@ export class Vfx {
       this.beams[i].life -= dt;
       if (this.beams[i].life <= 0) this.beams.splice(i, 1);
     }
+    for (let i = this.shocks.length - 1; i >= 0; i--) {
+      this.shocks[i].life -= dt;
+      if (this.shocks[i].life <= 0) this.shocks.splice(i, 1);
+    }
+    if (this.goldGlow > 0) this.goldGlow = Math.max(0, this.goldGlow - dt);
     for (const [id, t] of this.flash) {
       const nt = t - dt;
       if (nt <= 0) this.flash.delete(id);

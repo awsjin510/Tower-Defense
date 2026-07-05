@@ -111,4 +111,6 @@ export type SimEvent =
   | { type: 'towerHit'; dmg: number }
   | { type: 'enemyShot'; x: number; y: number }
   | { type: 'summon'; x: number; y: number }
-  | { type: 'perkOffer'; wave: number; choices: string[] };
+  | { type: 'perkOffer'; wave: number; choices: string[] }
+  | { type: 'ultNuke'; color: string }
+  | { type: 'ultActivate'; id: string; color: string };

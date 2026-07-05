@@ -1,0 +1,40 @@
+{
+  "ultimates": [
+    {
+      "id": "golden",
+      "name": "黃金塔",
+      "icon": "💰",
+      "color": "#e3b341",
+      "kind": "coinBuff",
+      "unlockWave": 5,
+      "baseCooldown": 45,
+      "cooldownPerLevel": -2,
+      "minCooldown": 22,
+      "baseDuration": 8,
+      "durationPerLevel": 1,
+      "baseValue": 3,
+      "valuePerLevel": 0.6,
+      "baseUpgradeCost": 400,
+      "upgradeGrowth": 1.6,
+      "maxLevel": 10
+    },
+    {
+      "id": "blackhole",
+      "name": "黑洞",
+      "icon": "🕳️",
+      "color": "#b878ff",
+      "kind": "nuke",
+      "unlockWave": 20,
+      "baseCooldown": 60,
+      "cooldownPerLevel": -3,
+      "minCooldown": 30,
+      "baseDuration": 0,
+      "durationPerLevel": 0,
+      "baseValue": 8,
+      "valuePerLevel": 3,
+      "baseUpgradeCost": 600,
+      "upgradeGrowth": 1.6,
+      "maxLevel": 10
+    }
+  ]
+}
