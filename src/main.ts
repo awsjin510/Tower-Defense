@@ -1,5 +1,5 @@
 import { buyInRunUpgrade, choosePerk, newRun, step, TICK_DT, type SimState } from './core/sim';
-import { IN_RUN_UPGRADES, WORKSHOP_UPGRADES } from './core/stats';
+import { IN_RUN_UPGRADES, WORKSHOP_UPGRADES, computeStats } from './core/stats';
 import { formatNumber, isMaxed, upgradeCost } from './core/economy';
 import { perkById } from './core/perks';
 import { offlineCoins } from './core/offline';
@@ -132,6 +132,24 @@ function fmtStatDelta(stat: StatId, v: number): string {
   }
 }
 
+/** 屬性的當前絕對值（各屬性用各自的單位），讓玩家一眼看懂目前數值 */
+function fmtStatValue(stat: StatId, v: number): string {
+  switch (stat) {
+    case 'critChance':
+      return `${(v * 100).toFixed(1)}%`;
+    case 'critFactor':
+    case 'cashPerKill':
+    case 'coinBonus':
+      return `x${v.toFixed(2)}`;
+    case 'attackSpeed':
+      return v.toFixed(2);
+    case 'healthRegen':
+      return `${v.toFixed(1)}/s`;
+    default:
+      return formatNumber(v);
+  }
+}
+
 interface UpgradeButton {
   el: HTMLButtonElement;
   def: UpgradeDef;
@@ -140,17 +158,28 @@ interface UpgradeButton {
 function makeUpgradeButton(def: UpgradeDef, onClick: () => void): UpgradeButton {
   const el = document.createElement('button');
   el.className = 'upgrade-btn';
-  el.innerHTML = `<span class="name"></span><span class="info"></span><span class="cost"></span>`;
+  el.innerHTML =
+    `<span class="name"></span>` +
+    `<span class="value"></span>` +
+    `<span class="foot"><span class="delta"></span><span class="cost"></span></span>`;
   el.addEventListener('click', onClick);
   return { el, def };
 }
 
-function refreshUpgradeButton(btn: UpgradeButton, level: number, currency: number, currencyClass: string): void {
+function refreshUpgradeButton(
+  btn: UpgradeButton,
+  level: number,
+  currency: number,
+  currencyClass: string,
+  currentValue: number
+): void {
   const { def, el } = btn;
   const maxed = isMaxed(def, level);
   const cost = upgradeCost(def, level);
   (el.querySelector('.name') as HTMLElement).textContent = `${def.name} Lv.${level}`;
-  (el.querySelector('.info') as HTMLElement).textContent = `每級 ${fmtStatDelta(def.stat, def.valuePerLevel)}`;
+  // 目前的實際數值（含工坊 + 場內 + Perk 的總和），一眼看懂目前狀態
+  (el.querySelector('.value') as HTMLElement).textContent = fmtStatValue(def.stat, currentValue);
+  (el.querySelector('.delta') as HTMLElement).textContent = `每級 ${fmtStatDelta(def.stat, def.valuePerLevel)}`;
   const costEl = el.querySelector('.cost') as HTMLElement;
   costEl.className = `cost ${currencyClass}`;
   costEl.textContent = maxed ? 'MAX' : formatNumber(cost);
@@ -178,8 +207,10 @@ function refreshWorkshop(): void {
     <div class="stat"><span class="label">最高波次</span><span class="value">${save.bestWave}</span></div>
     <div class="stat"><span class="label">總場數</span><span class="value">${save.totalRuns}</span></div>
     <div class="spacer"></div>`;
+  // 工坊顯示「每場開局」的屬性值（永久升級套用後、尚未買場內升級時的起點）
+  const startStats = computeStats(save.workshopLevels, {});
   for (const btn of workshopButtons) {
-    refreshUpgradeButton(btn, save.workshopLevels[btn.def.id] ?? 0, save.coins, 'coin');
+    refreshUpgradeButton(btn, save.workshopLevels[btn.def.id] ?? 0, save.coins, 'coin', startStats[btn.def.stat]);
   }
 }
 
@@ -286,7 +317,7 @@ function updateBattleHud(dt: number): void {
 function refreshBattleButtons(): void {
   if (!sim) return;
   for (const btn of battleButtons) {
-    refreshUpgradeButton(btn, sim.inRunLevels[btn.def.id] ?? 0, sim.cash, 'cash');
+    refreshUpgradeButton(btn, sim.inRunLevels[btn.def.id] ?? 0, sim.cash, 'cash', sim.stats[btn.def.stat]);
   }
 }
 
