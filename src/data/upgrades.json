@@ -1,0 +1,23 @@
+{
+  "inRun": [
+    { "id": "damage", "name": "傷害", "category": "attack", "stat": "damage", "baseCost": 12, "costGrowth": 1.24, "valuePerLevel": 4, "maxLevel": 0 },
+    { "id": "attackSpeed", "name": "攻擊速度", "category": "attack", "stat": "attackSpeed", "baseCost": 20, "costGrowth": 1.3, "valuePerLevel": 0.1, "maxLevel": 60 },
+    { "id": "critChance", "name": "暴擊率", "category": "attack", "stat": "critChance", "baseCost": 30, "costGrowth": 1.32, "valuePerLevel": 0.01, "maxLevel": 50 },
+    { "id": "critFactor", "name": "暴擊倍率", "category": "attack", "stat": "critFactor", "baseCost": 45, "costGrowth": 1.32, "valuePerLevel": 0.08, "maxLevel": 60 },
+    { "id": "range", "name": "射程", "category": "attack", "stat": "range", "baseCost": 35, "costGrowth": 1.35, "valuePerLevel": 8, "maxLevel": 20 },
+    { "id": "maxHealth", "name": "血量上限", "category": "defense", "stat": "maxHealth", "baseCost": 15, "costGrowth": 1.24, "valuePerLevel": 30, "maxLevel": 0 },
+    { "id": "healthRegen", "name": "血量回復", "category": "defense", "stat": "healthRegen", "baseCost": 25, "costGrowth": 1.28, "valuePerLevel": 1.2, "maxLevel": 0 },
+    { "id": "cashPerKill", "name": "每殺金額", "category": "economy", "stat": "cashPerKill", "baseCost": 30, "costGrowth": 1.35, "valuePerLevel": 0.08, "maxLevel": 40 },
+    { "id": "cashPerWave", "name": "每波金額", "category": "economy", "stat": "cashPerWave", "baseCost": 25, "costGrowth": 1.3, "valuePerLevel": 12, "maxLevel": 0 }
+  ],
+  "workshop": [
+    { "id": "ws_damage", "name": "傷害", "category": "attack", "stat": "damage", "baseCost": 10, "costGrowth": 1.22, "valuePerLevel": 3, "maxLevel": 0 },
+    { "id": "ws_attackSpeed", "name": "攻擊速度", "category": "attack", "stat": "attackSpeed", "baseCost": 25, "costGrowth": 1.3, "valuePerLevel": 0.06, "maxLevel": 40 },
+    { "id": "ws_critChance", "name": "暴擊率", "category": "attack", "stat": "critChance", "baseCost": 40, "costGrowth": 1.35, "valuePerLevel": 0.005, "maxLevel": 40 },
+    { "id": "ws_critFactor", "name": "暴擊倍率", "category": "attack", "stat": "critFactor", "baseCost": 60, "costGrowth": 1.35, "valuePerLevel": 0.05, "maxLevel": 50 },
+    { "id": "ws_range", "name": "射程", "category": "attack", "stat": "range", "baseCost": 50, "costGrowth": 1.4, "valuePerLevel": 6, "maxLevel": 15 },
+    { "id": "ws_maxHealth", "name": "血量上限", "category": "defense", "stat": "maxHealth", "baseCost": 12, "costGrowth": 1.22, "valuePerLevel": 25, "maxLevel": 0 },
+    { "id": "ws_healthRegen", "name": "血量回復", "category": "defense", "stat": "healthRegen", "baseCost": 30, "costGrowth": 1.28, "valuePerLevel": 0.8, "maxLevel": 0 },
+    { "id": "ws_coinBonus", "name": "金幣加成", "category": "economy", "stat": "coinBonus", "baseCost": 50, "costGrowth": 1.35, "valuePerLevel": 0.05, "maxLevel": 40 }
+  ]
+}

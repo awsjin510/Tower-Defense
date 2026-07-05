@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Tower Defense — 放置塔防</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      html, body { height: 100%; background: #0d1117; color: #e6edf3; font-family: system-ui, -apple-system, "Noto Sans TC", sans-serif; }
+      #app { display: flex; flex-direction: column; height: 100%; max-width: 560px; margin: 0 auto; }
+
+      #topbar {
+        display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+        background: #161b22; border-bottom: 1px solid #21262d; font-size: 14px;
+      }
+      #topbar .stat { display: flex; flex-direction: column; }
+      #topbar .stat .label { font-size: 10px; color: #8b949e; }
+      #topbar .stat .value { font-weight: 700; font-variant-numeric: tabular-nums; }
+      #topbar .spacer { flex: 1; }
+      .coin { color: #e3b341; }
+      .cash { color: #56d364; }
+
+      #canvas-wrap { position: relative; width: 100%; flex: 1 1 auto; min-height: 0; }
+      #game { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+      #speed-btn {
+        background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px;
+        padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer;
+      }
+
+      #bottom { flex: 0 0 auto; background: #161b22; border-top: 1px solid #21262d; }
+      #tabs { display: flex; }
+      #tabs button {
+        flex: 1; padding: 9px 0; background: none; border: none; border-bottom: 2px solid transparent;
+        color: #8b949e; font-size: 14px; font-weight: 700; cursor: pointer;
+      }
+      #tabs button.active { color: #e6edf3; border-bottom-color: #58a6ff; }
+      #tabs button[data-tab="attack"].active { border-bottom-color: #f85149; }
+      #tabs button[data-tab="defense"].active { border-bottom-color: #58a6ff; }
+      #tabs button[data-tab="economy"].active { border-bottom-color: #e3b341; }
+
+      .upgrade-grid {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px;
+        max-height: 32vh; overflow-y: auto;
+      }
+      .upgrade-btn {
+        display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+        background: #21262d; border: 1px solid #30363d; border-radius: 8px;
+        padding: 8px 10px; color: #e6edf3; cursor: pointer; text-align: left; font-size: 13px;
+      }
+      .upgrade-btn:not(:disabled):active { background: #30363d; }
+      .upgrade-btn:disabled { opacity: 0.45; cursor: default; }
+      .upgrade-btn .name { font-weight: 700; }
+      .upgrade-btn .info { font-size: 11px; color: #8b949e; font-variant-numeric: tabular-nums; }
+      .upgrade-btn .cost { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+      .screen { display: none; }
+      .screen.active { display: block; }
+      #workshop-screen { flex: 1; overflow-y: auto; padding: 14px; }
+      #workshop-screen h1 { font-size: 20px; margin-bottom: 2px; }
+      #workshop-screen .sub { color: #8b949e; font-size: 13px; margin-bottom: 12px; }
+      #workshop-screen h2 { font-size: 14px; color: #8b949e; margin: 14px 0 6px; }
+      #workshop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      #battle-screen { flex: 1; display: none; flex-direction: column; min-height: 0; }
+      #battle-screen.active { display: flex; }
+
+      #start-btn {
+        display: block; width: 100%; margin-top: 16px; padding: 14px;
+        background: #238636; color: #fff; border: none; border-radius: 8px;
+        font-size: 17px; font-weight: 700; cursor: pointer;
+      }
+      #start-btn:active { background: #2ea043; }
+
+      #results {
+        position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+        background: rgba(1, 4, 9, 0.8); z-index: 10;
+      }
+      #results.active { display: flex; }
+      #results .card {
+        background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+        padding: 24px 32px; text-align: center; min-width: 260px;
+      }
+      #results h2 { margin-bottom: 14px; font-size: 18px; }
+      #results .row { display: flex; justify-content: space-between; gap: 24px; margin: 6px 0; font-size: 14px; }
+      #results .row .label { color: #8b949e; }
+      #results .row .value { font-weight: 700; font-variant-numeric: tabular-nums; }
+      #results button {
+        margin-top: 16px; width: 100%; padding: 12px; background: #1f6feb; color: #fff;
+        border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <header id="topbar"></header>
+
+      <div id="workshop-screen" class="screen active">
+        <h1>🛠️ 工坊</h1>
+        <div class="sub">用金幣購買永久升級，每一場都會更強</div>
+        <div id="workshop-grid"></div>
+        <button id="start-btn">⚔️ 開始戰鬥</button>
+      </div>
+
+      <div id="battle-screen" class="screen">
+        <div id="canvas-wrap"><canvas id="game"></canvas></div>
+        <div id="bottom">
+          <div id="tabs"></div>
+          <div id="battle-grid" class="upgrade-grid"></div>
+        </div>
+      </div>
+
+      <div id="results">
+        <div class="card">
+          <h2>⚔️ 戰鬥結束</h2>
+          <div id="results-rows"></div>
+          <button id="results-btn">回到工坊</button>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

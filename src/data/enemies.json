@@ -1,0 +1,32 @@
+{
+  "types": [
+    { "id": "normal", "name": "士兵", "hpMult": 1.0, "speedMult": 1.0, "dmgMult": 1.0, "rewardMult": 1.0, "radius": 9, "color": "#e05555", "minWave": 1 },
+    { "id": "fast", "name": "疾行者", "hpMult": 0.55, "speedMult": 1.9, "dmgMult": 0.7, "rewardMult": 1.15, "radius": 7, "color": "#e0a83c", "minWave": 3 },
+    { "id": "tank", "name": "重甲兵", "hpMult": 3.2, "speedMult": 0.55, "dmgMult": 1.8, "rewardMult": 2.6, "radius": 13, "color": "#8455e0", "minWave": 6 },
+    { "id": "boss", "name": "頭目", "hpMult": 22.0, "speedMult": 0.45, "dmgMult": 4.0, "rewardMult": 18.0, "radius": 22, "color": "#d43cc8", "minWave": 10 }
+  ],
+  "scaling": {
+    "baseHp": 11,
+    "hpGrowth": 1.09,
+    "baseSpeed": 42,
+    "speedPerWave": 0.25,
+    "maxSpeed": 78,
+    "baseDmg": 6,
+    "dmgGrowth": 1.062,
+    "baseCash": 4,
+    "cashGrowth": 1.082,
+    "baseCoin": 0.08,
+    "coinGrowth": 1.085
+  },
+  "waves": {
+    "baseCount": 5,
+    "countPerWave": 0.9,
+    "maxCount": 45,
+    "spawnInterval": 0.75,
+    "minSpawnInterval": 0.28,
+    "interWaveDelay": 1.2,
+    "bossEvery": 10,
+    "waveCoinBase": 0.8,
+    "waveCoinGrowth": 1.09
+  }
+}
