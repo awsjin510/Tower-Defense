@@ -3,6 +3,7 @@ import { IN_RUN_UPGRADES, WORKSHOP_UPGRADES, computeStats } from './core/stats';
 import { formatNumber, isMaxed, upgradeCost } from './core/economy';
 import { perkById } from './core/perks';
 import { offlineCoins } from './core/offline';
+import { isZoneEntryWave, zoneForWave } from './core/zones';
 import type { StatId, UpgradeCategory, UpgradeDef } from './core/types';
 import { applySave, ensurePlayerId, localStorageStore, type SaveData } from './meta/save';
 import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
@@ -274,6 +275,7 @@ function buildBattleGrid(): void {
 // 戰鬥頂欄用持久 DOM（每幀更新數字、平滑滾動），不整塊重建
 interface Hud {
   wave: HTMLElement;
+  zone: HTMLElement;
   cash: HTMLElement;
   coin: HTMLElement;
   hp: HTMLElement;
@@ -288,6 +290,7 @@ let dispHp = 0;
 function buildBattleTopbar(): void {
   topbar.innerHTML = `
     <div class="stat"><span class="label">波次</span><span class="value" data-wave></span></div>
+    <div class="stat"><span class="label">戰區</span><span class="value" data-zone></span></div>
     <div class="stat"><span class="label">現金</span><span class="value cash" data-cash></span></div>
     <div class="stat"><span class="label">本場金幣</span><span class="value coin" data-coin></span></div>
     <div class="stat"><span class="label">血量</span><span class="value" data-hp></span></div>
@@ -300,6 +303,7 @@ function buildBattleTopbar(): void {
   });
   hud = {
     wave: topbar.querySelector('[data-wave]') as HTMLElement,
+    zone: topbar.querySelector('[data-zone]') as HTMLElement,
     cash: topbar.querySelector('[data-cash]') as HTMLElement,
     coin: topbar.querySelector('[data-coin]') as HTMLElement,
     hp: topbar.querySelector('[data-hp]') as HTMLElement,
@@ -315,6 +319,11 @@ function updateBattleHud(dt: number): void {
   dispCoin += (sim.coinsEarned - dispCoin) * k;
   dispHp += (sim.towerHp - dispHp) * k;
   hud.wave.textContent = String(sim.wave);
+  const zone = zoneForWave(sim.wave);
+  if (hud.zone.textContent !== zone.name) {
+    hud.zone.textContent = zone.name;
+    hud.zone.style.color = zone.accent;
+  }
   hud.cash.textContent = `$ ${formatNumber(dispCash)}`;
   hud.coin.textContent = `🪙 ${formatNumber(dispCoin)}`;
   hud.hp.textContent = `${formatNumber(Math.max(Math.ceil(dispHp), 0))}/${formatNumber(sim.stats.maxHealth)}`;
@@ -333,9 +342,23 @@ function refreshBattleButtons(): void {
 let bannerTimer = 0;
 function showWaveBanner(wave: number, boss: boolean): void {
   const banner = $('#wave-banner');
-  banner.textContent = boss ? `⚠ 頭目來襲 · Wave ${wave}` : `Wave ${wave}`;
-  banner.className = boss ? 'show boss' : 'show';
-  bannerTimer = boss ? 2.4 : 1.6;
+  banner.style.background = '';
+  banner.style.boxShadow = '';
+  if (boss) {
+    banner.textContent = `⚠ 頭目來襲 · Wave ${wave}`;
+    banner.className = 'show boss';
+  } else if (isZoneEntryWave(wave) && wave > 1) {
+    // 跨入新戰區：以戰區主題色宣告
+    const zone = zoneForWave(wave);
+    banner.textContent = `🌐 進入 ${zone.name} · Wave ${wave}`;
+    banner.className = 'show';
+    banner.style.background = zone.accent;
+    banner.style.boxShadow = `0 4px 22px ${zone.accent}`;
+  } else {
+    banner.textContent = `Wave ${wave}`;
+    banner.className = 'show';
+  }
+  bannerTimer = boss ? 2.4 : isZoneEntryWave(wave) && wave > 1 ? 2.2 : 1.6;
 }
 
 // ---------- Perk 三選一（模擬已在 core 暫停，選完才恢復） ----------

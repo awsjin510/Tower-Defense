@@ -1,35 +1,37 @@
 import type { EnemyScaling, EnemyTypeDef, WaveConfig } from './types';
 import enemiesData from '../data/enemies.json';
+import { zoneForWave } from './zones';
 
 export const ENEMY_TYPES = enemiesData.types as EnemyTypeDef[];
 export const SCALING = enemiesData.scaling as EnemyScaling;
 export const WAVE_CONFIG = enemiesData.waves as WaveConfig;
 
+// 敵人數值 = 波次縮放 × 敵種倍率 × 戰區倍率（三層皆資料驅動）
+
 export function enemyHp(wave: number, typeMult: number): number {
-  return SCALING.baseHp * Math.pow(SCALING.hpGrowth, wave - 1) * typeMult;
+  return SCALING.baseHp * Math.pow(SCALING.hpGrowth, wave - 1) * typeMult * zoneForWave(wave).mods.hpMult;
 }
 
 export function enemySpeed(wave: number, typeMult: number): number {
-  return Math.min(SCALING.baseSpeed + SCALING.speedPerWave * (wave - 1), SCALING.maxSpeed) * typeMult;
+  const base = Math.min(SCALING.baseSpeed + SCALING.speedPerWave * (wave - 1), SCALING.maxSpeed);
+  return base * typeMult * zoneForWave(wave).mods.speedMult;
 }
 
 export function enemyDmg(wave: number, typeMult: number): number {
-  return SCALING.baseDmg * Math.pow(SCALING.dmgGrowth, wave - 1) * typeMult;
+  return SCALING.baseDmg * Math.pow(SCALING.dmgGrowth, wave - 1) * typeMult * zoneForWave(wave).mods.dmgMult;
 }
 
 export function enemyCash(wave: number, typeMult: number): number {
-  return SCALING.baseCash * Math.pow(SCALING.cashGrowth, wave - 1) * typeMult;
+  return SCALING.baseCash * Math.pow(SCALING.cashGrowth, wave - 1) * typeMult * zoneForWave(wave).mods.cashMult;
 }
 
 export function enemyCoin(wave: number, typeMult: number): number {
-  return SCALING.baseCoin * Math.pow(SCALING.coinGrowth, wave - 1) * typeMult;
+  return SCALING.baseCoin * Math.pow(SCALING.coinGrowth, wave - 1) * typeMult * zoneForWave(wave).mods.coinMult;
 }
 
 export function enemyCountForWave(wave: number): number {
-  return Math.min(
-    Math.floor(WAVE_CONFIG.baseCount + WAVE_CONFIG.countPerWave * (wave - 1)),
-    WAVE_CONFIG.maxCount
-  );
+  const base = WAVE_CONFIG.baseCount + WAVE_CONFIG.countPerWave * (wave - 1);
+  return Math.min(Math.floor(base * zoneForWave(wave).mods.countMult), WAVE_CONFIG.maxCount);
 }
 
 export function spawnIntervalForWave(wave: number): number {
