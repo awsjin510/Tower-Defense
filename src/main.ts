@@ -1,4 +1,4 @@
-import { buyInRunUpgrade, choosePerk, newRun, step, TICK_DT, type SimState } from './core/sim';
+import { activateUltimate, buyInRunUpgrade, choosePerk, newRun, step, TICK_DT, type SimState } from './core/sim';
 import { IN_RUN_UPGRADES, WORKSHOP_UPGRADES, computeStats } from './core/stats';
 import { formatNumber, isMaxed, upgradeCost } from './core/economy';
 import { perkById } from './core/perks';
@@ -30,6 +30,14 @@ import {
   researchRemainingSec,
   startResearch,
 } from './meta/research';
+import { ULTIMATES, describeUltimate, isUltimateMaxed, ultimateById } from './core/ultimates';
+import {
+  buyUltimateUpgrade,
+  resolvedUltimates,
+  syncUltimateUnlocks,
+  ultimateLevel,
+  ultimateUpgradePrice,
+} from './meta/ultimates';
 import type { StatId, UpgradeCategory, UpgradeDef } from './core/types';
 import { applySave, ensurePlayerId, localStorageStore, type SaveData } from './meta/save';
 import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
@@ -49,6 +57,8 @@ pruneEquipped(save);
 // 研究：開啟時結算離線期間已完成的研究（真實時間），完成則立即寫回避免遺失
 const offlineResearch = collectResearch(save, Date.now());
 if (offlineResearch) store.save(save);
+// 終極武器：依歷史最高波次補齊里程碑解鎖（由 bestWave 推導，不需強制寫檔）
+syncUltimateUnlocks(save);
 let cloudUser: User | null = null;
 let cloudModule: CloudModule | null = null;
 let cloudReady = false;
@@ -256,36 +266,37 @@ function refreshWorkshop(): void {
   }
 }
 
-function showWorkshop(): void {
+const cardsScreen = $('#cards-screen');
+const researchScreen = $('#research-screen');
+const ultimatesScreen = $('#ultimates-screen');
+type MetaScreen = 'workshop' | 'cards' | 'research' | 'ultimates';
+
+function showMeta(active: MetaScreen): void {
   sim = null;
-  workshopScreen.classList.add('active');
-  cardsScreen.classList.remove('active');
-  researchScreen.classList.remove('active');
+  workshopScreen.classList.toggle('active', active === 'workshop');
+  cardsScreen.classList.toggle('active', active === 'cards');
+  researchScreen.classList.toggle('active', active === 'research');
+  ultimatesScreen.classList.toggle('active', active === 'ultimates');
   battleScreen.classList.remove('active');
   $('#results').classList.remove('active');
-  setMetaNav('workshop');
+  setMetaNav(active);
+}
+
+function showWorkshop(): void {
+  showMeta('workshop');
   refreshWorkshop();
 }
 
 // ---------- 卡片畫面 ----------
 
-const cardsScreen = $('#cards-screen');
-const researchScreen = $('#research-screen');
-
-function setMetaNav(active: 'workshop' | 'cards' | 'research'): void {
+function setMetaNav(active: MetaScreen): void {
   for (const b of document.querySelectorAll<HTMLButtonElement>('.meta-nav button')) {
     b.classList.toggle('active', b.dataset.meta === active);
   }
 }
 
 function showCards(): void {
-  sim = null;
-  cardsScreen.classList.add('active');
-  workshopScreen.classList.remove('active');
-  researchScreen.classList.remove('active');
-  battleScreen.classList.remove('active');
-  $('#results').classList.remove('active');
-  setMetaNav('cards');
+  showMeta('cards');
   refreshCards();
 }
 
@@ -425,14 +436,55 @@ function refreshCards(): void {
 // ---------- 研究室畫面 ----------
 
 function showResearch(): void {
-  sim = null;
-  researchScreen.classList.add('active');
-  workshopScreen.classList.remove('active');
-  cardsScreen.classList.remove('active');
-  battleScreen.classList.remove('active');
-  $('#results').classList.remove('active');
-  setMetaNav('research');
+  showMeta('research');
   refreshResearch();
+}
+
+// ---------- 終極武器升級畫面 ----------
+
+function showUltimates(): void {
+  showMeta('ultimates');
+  refreshUltimates();
+}
+
+function refreshUltimates(): void {
+  refreshWorkshop(); // 共用頂欄
+  const list = $('#ultimates-list');
+  list.innerHTML = '';
+  for (const def of ULTIMATES) {
+    const level = ultimateLevel(save, def.id);
+    const owned = level >= 1;
+    const row = document.createElement('div');
+    row.className = 'ult-row' + (owned ? '' : ' locked');
+
+    let cta: string;
+    if (!owned) {
+      cta = `<button disabled>波次 ${def.unlockWave}<br>解鎖</button>`;
+    } else if (isUltimateMaxed(def, level)) {
+      cta = `<button disabled>MAX</button>`;
+    } else {
+      const price = ultimateUpgradePrice(save, def.id)!;
+      cta = `<button ${save.coins >= price ? '' : 'disabled'}>升級<br>🪙${formatNumber(price)}</button>`;
+    }
+
+    row.innerHTML = `
+      <div class="ult-icon" style="background:linear-gradient(160deg, ${def.color}55, ${def.color}11)">${def.icon}</div>
+      <div class="ult-body">
+        <div class="ult-name">${def.name}<span class="lv">${owned ? `Lv.${level}` : '未解鎖'}</span></div>
+        <div class="ult-sub">${describeUltimate(def, Math.max(level, 1))}</div>
+      </div>
+      <div class="ult-cta">${cta}</div>`;
+
+    if (owned && !isUltimateMaxed(def, level)) {
+      (row.querySelector('.ult-cta button') as HTMLButtonElement).addEventListener('click', () => {
+        if (buyUltimateUpgrade(save, def.id)) {
+          saveProgress();
+          refreshUltimates();
+        }
+      });
+    }
+    list.appendChild(row);
+  }
 }
 
 function fmtDuration(sec: number): string {
@@ -916,9 +968,57 @@ $('#account-copy').addEventListener('click', async () => {
   }, 1200);
 });
 
+// ---------- 終極武器：戰鬥中施放鈕 ----------
+
+function buildUltBar(): void {
+  const bar = $('#ult-bar');
+  bar.innerHTML = '';
+  if (!sim) return;
+  for (const u of sim.ultimates) {
+    const def = ultimateById(u.id);
+    const btn = document.createElement('button');
+    btn.className = 'ult-btn';
+    btn.dataset.ult = u.id;
+    btn.style.setProperty('--ult-color', u.color);
+    btn.innerHTML = `<span class="glyph">${def?.icon ?? '★'}</span><div class="cool-mask"></div><div class="cool-num"></div>`;
+    btn.addEventListener('click', () => {
+      if (sim && activateUltimate(sim, u.id)) updateUltBar();
+    });
+    bar.appendChild(btn);
+  }
+}
+
+function updateUltBar(): void {
+  if (!sim) return;
+  for (const btn of document.querySelectorAll<HTMLButtonElement>('#ult-bar .ult-btn')) {
+    const id = btn.dataset.ult!;
+    const u = sim.ultimates.find((x) => x.id === id);
+    if (!u) continue;
+    const cd = sim.ultCooldowns[id] ?? 0;
+    const cooling = cd > 0;
+    btn.classList.toggle('cooling', cooling);
+    btn.disabled = cooling || sim.over;
+    const mask = btn.querySelector('.cool-mask') as HTMLElement;
+    const num = btn.querySelector('.cool-num') as HTMLElement;
+    if (cooling) {
+      mask.style.height = `${Math.round(Math.min(cd / u.cooldown, 1) * 100)}%`;
+      num.textContent = String(Math.ceil(cd));
+    } else {
+      mask.style.height = '0%';
+      num.textContent = '';
+    }
+  }
+}
+
 function startBattle(): void {
   const mods = buildRunMods(save.equipped, (id) => cardStar(save, id));
-  sim = newRun(save.workshopLevels, (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0, mods, save.researchLevels);
+  sim = newRun(
+    save.workshopLevels,
+    (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
+    mods,
+    save.researchLevels,
+    resolvedUltimates(save)
+  );
   resultsShown = false;
   perkOverlay.classList.remove('active');
   dispCash = 0;
@@ -927,11 +1027,14 @@ function startBattle(): void {
   vfx.texts.length = 0;
   vfx.particles.length = 0;
   vfx.flash.clear();
+  vfx.shocks.length = 0;
+  vfx.goldGlow = 0;
   workshopScreen.classList.remove('active');
   battleScreen.classList.add('active');
   buildBattleTopbar();
   buildTabs();
   buildBattleGrid();
+  buildUltBar();
 }
 
 /** 數字滾動：dur 秒內從 0 補到 target */
@@ -949,15 +1052,19 @@ function rollNumber(el: HTMLElement, target: number, dur: number, prefix: string
 function showResults(s: SimState): void {
   const isRecord = s.wave > save.bestWave;
   settleRun(save, { wave: s.wave, coinsEarned: s.coinsEarned, kills: s.kills, timeSec: s.time });
-  // 這一場刷新紀錄後可能解鎖新卡片
+  // 這一場刷新紀錄後可能解鎖新卡片 / 終極武器
   const newCards = syncCardUnlocks(save);
+  const newUlts = syncUltimateUnlocks(save);
   saveProgress();
   const unlockedLine = newCards.length
     ? `<div class="record">🃏 解鎖新卡片：${newCards.map((id) => cardById(id)?.name ?? id).join('、')}</div>`
     : '';
+  const ultLine = newUlts.length
+    ? `<div class="record">💥 解鎖終極武器：${newUlts.map((id) => ultimateById(id)?.name ?? id).join('、')}</div>`
+    : '';
   $('#results-rows').innerHTML = `
     ${isRecord ? '<div class="record">🏆 新紀錄！</div>' : ''}
-    ${unlockedLine}
+    ${unlockedLine}${ultLine}
     <div class="row"><span class="label">到達波次</span><span class="value">${s.wave}</span></div>
     <div class="row"><span class="label">擊殺數</span><span class="value">${formatNumber(s.kills)}</span></div>
     <div class="row"><span class="label">獲得金幣</span><span class="value coin" data-coinroll>+🪙 0</span></div>
@@ -993,6 +1100,7 @@ function frame(now: number): void {
     if (uiTimer >= 0.1) {
       uiTimer = 0;
       refreshBattleButtons();
+      updateUltBar();
     }
     if (bannerTimer > 0) {
       bannerTimer -= dt;
@@ -1018,6 +1126,7 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('.meta-nav button')
   b.addEventListener('click', () => {
     if (b.dataset.meta === 'cards') showCards();
     else if (b.dataset.meta === 'research') showResearch();
+    else if (b.dataset.meta === 'ultimates') showUltimates();
     else showWorkshop();
   });
 }

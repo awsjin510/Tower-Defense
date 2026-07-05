@@ -294,6 +294,19 @@ export function render(
   }
   ctx.globalAlpha = 1;
 
+  // 終極武器衝擊波（黑洞）：從中心擴散的環
+  for (const sh of vfx.shocks) {
+    const t = 1 - sh.life / sh.maxLife;
+    const r = t * ARENA_RADIUS * 1.35;
+    ctx.globalAlpha = (1 - t) * 0.9;
+    ctx.strokeStyle = sh.color;
+    ctx.lineWidth = 6 * (1 - t) + 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
   ctx.save();
   ctx.shadowColor = 'rgba(88,166,255,0.7)';
   ctx.shadowBlur = 14 + Math.sin(s.time * 2.5) * 5;
@@ -341,4 +354,15 @@ export function render(
   ctx.globalAlpha = 1;
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  // 黃金塔啟用：全螢幕金光暈邊（螢幕座標）
+  const goldActive = s.ultActive.some((a) => a.coinMult > 1);
+  if (goldActive || vfx.goldGlow > 0) {
+    const pulse = goldActive ? 0.28 + Math.sin(s.time * 6) * 0.08 : vfx.goldGlow / 0.6 * 0.3;
+    const vign = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.75);
+    vign.addColorStop(0, 'rgba(0,0,0,0)');
+    vign.addColorStop(1, `rgba(227, 179, 65, ${Math.max(pulse, 0)})`);
+    ctx.fillStyle = vign;
+    ctx.fillRect(0, 0, w, h);
+  }
 }

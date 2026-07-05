@@ -1,6 +1,6 @@
 import type { Levels } from '../core/stats';
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 const SAVE_KEY = 'tower-defense-save';
 
 /** 進行中的研究：以真實時間計，離線也在推進 */
@@ -35,6 +35,8 @@ export interface SaveData {
   researchLevels: Record<string, number>;
   /** 進行中的研究（單一佇列）；null 表示閒置（v6 起） */
   activeResearch: ActiveResearch | null;
+  /** 終極武器等級：id → 等級（0 未解鎖、1+ 可用）（v7 起） */
+  ultimates: Record<string, number>;
 }
 
 export function defaultSave(): SaveData {
@@ -54,6 +56,7 @@ export function defaultSave(): SaveData {
     cardSlots: 2,
     researchLevels: {},
     activeResearch: null,
+    ultimates: {},
   };
 }
 
@@ -82,6 +85,7 @@ export function migrate(raw: unknown): SaveData {
   // v3 → v4：playerId 由 defaultSave 補 ''，首次開啟由 ensurePlayerId 產生。
   // v4 → v5：cards / equipped / cardSlots 由 defaultSave 補預設（無卡、2 槽）。
   // v5 → v6：researchLevels / activeResearch 由 defaultSave 補預設（無研究、閒置）。
+  // v6 → v7：ultimates 由 defaultSave 補 {}（無終極武器）。
   data.version = SAVE_VERSION;
   return data;
 }
@@ -99,6 +103,7 @@ export function applySave(target: SaveData, source: SaveData): void {
     equipped: [...(source.equipped ?? [])],
     researchLevels: { ...(source.researchLevels ?? {}) },
     activeResearch: source.activeResearch ? { ...source.activeResearch } : null,
+    ultimates: { ...(source.ultimates ?? {}) },
   });
 }
 

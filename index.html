@@ -100,9 +100,9 @@
 
       .screen { display: none; }
       .screen.active { display: block; }
-      #workshop-screen, #cards-screen, #research-screen { flex: 1; overflow-y: auto; padding: 14px; }
-      #workshop-screen h1, #cards-screen h1, #research-screen h1 { font-size: 20px; margin-bottom: 2px; }
-      #workshop-screen .sub, #cards-screen .sub, #research-screen .sub { color: #8b949e; font-size: 13px; margin-bottom: 12px; }
+      #workshop-screen, #cards-screen, #research-screen, #ultimates-screen { flex: 1; overflow-y: auto; padding: 14px; }
+      #workshop-screen h1, #cards-screen h1, #research-screen h1, #ultimates-screen h1 { font-size: 20px; margin-bottom: 2px; }
+      #workshop-screen .sub, #cards-screen .sub, #research-screen .sub, #ultimates-screen .sub { color: #8b949e; font-size: 13px; margin-bottom: 12px; }
       #workshop-screen h2 { font-size: 14px; color: #8b949e; margin: 14px 0 6px; }
       #workshop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
@@ -185,6 +185,51 @@
       .research-cta button.start { border-color: #2ea043; color: #56d364; }
       .research-cta button:disabled { opacity: 0.4; cursor: default; }
       .research-timer { font-size: 13px; font-weight: 800; color: #58a6ff; font-variant-numeric: tabular-nums; }
+      .meta-nav button { font-size: 13px; padding: 9px 2px; }
+
+      /* 終極武器：升級畫面 */
+      #ultimates-list { display: flex; flex-direction: column; gap: 10px; }
+      .ult-row {
+        display: flex; align-items: center; gap: 12px; padding: 12px;
+        background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+      }
+      .ult-row.locked { opacity: 0.6; }
+      .ult-icon {
+        width: 50px; height: 50px; flex: 0 0 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        font-size: 28px; border: 1px solid #ffffff1a;
+      }
+      .ult-body { flex: 1; min-width: 0; }
+      .ult-name { font-size: 15px; font-weight: 800; }
+      .ult-name .lv { color: #8b949e; font-size: 12px; font-weight: 700; margin-left: 6px; }
+      .ult-sub { font-size: 12px; color: #8b949e; }
+      .ult-cta button {
+        padding: 9px 12px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer;
+        border: 1px solid #30363d; background: #21262d; color: #e3b341; min-width: 82px; line-height: 1.4;
+      }
+      .ult-cta button:disabled { opacity: 0.4; cursor: default; color: #8b949e; }
+
+      /* 終極武器：戰鬥中施放鈕（浮在畫布左下） */
+      #ult-bar {
+        position: absolute; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
+        display: flex; flex-direction: column; gap: 10px; z-index: 6;
+      }
+      .ult-btn {
+        position: relative; width: 58px; height: 58px; border-radius: 50%;
+        border: 2px solid var(--ult-color, #e3b341); background: #0d1117cc; color: #fff;
+        font-size: 26px; cursor: pointer; overflow: hidden; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+        box-shadow: 0 0 12px var(--ult-color, #e3b341);
+      }
+      .ult-btn:active { transform: scale(0.94); }
+      .ult-btn.cooling { box-shadow: none; }
+      /* 冷卻遮罩：從底部升起的暗層 + 秒數 */
+      .ult-btn .cool-mask {
+        position: absolute; left: 0; right: 0; bottom: 0; background: rgba(1,4,9,0.72);
+        pointer-events: none;
+      }
+      .ult-btn .cool-num {
+        position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+        font-size: 16px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; pointer-events: none;
+      }
       #battle-screen { flex: 1; display: none; flex-direction: column; min-height: 0; }
       #battle-screen.active { display: flex; }
 
@@ -327,6 +372,7 @@
           <button data-meta="workshop" class="active" type="button">🛠️ 工坊</button>
           <button data-meta="cards" type="button">🃏 卡片</button>
           <button data-meta="research" type="button">🔬 研究</button>
+          <button data-meta="ultimates" type="button">💥 終極</button>
         </div>
         <h1>🛠️ 工坊</h1>
         <div class="sub">用金幣購買永久升級，每一場都會更強</div>
@@ -339,6 +385,7 @@
           <button data-meta="workshop" type="button">🛠️ 工坊</button>
           <button data-meta="cards" class="active" type="button">🃏 卡片</button>
           <button data-meta="research" type="button">🔬 研究</button>
+          <button data-meta="ultimates" type="button">💥 終極</button>
         </div>
         <h1>🃏 卡片</h1>
         <div class="sub">戰前配置卡片，槽位有限——取捨出你的流派</div>
@@ -352,16 +399,30 @@
           <button data-meta="workshop" type="button">🛠️ 工坊</button>
           <button data-meta="cards" type="button">🃏 卡片</button>
           <button data-meta="research" class="active" type="button">🔬 研究</button>
+          <button data-meta="ultimates" type="button">💥 終極</button>
         </div>
         <h1>🔬 研究室</h1>
         <div class="sub">用真實時間跑研究，離線也在推進——一次只能跑一項</div>
         <div id="research-list"></div>
       </div>
 
+      <div id="ultimates-screen" class="screen">
+        <div class="meta-nav">
+          <button data-meta="workshop" type="button">🛠️ 工坊</button>
+          <button data-meta="cards" type="button">🃏 卡片</button>
+          <button data-meta="research" type="button">🔬 研究</button>
+          <button data-meta="ultimates" class="active" type="button">💥 終極</button>
+        </div>
+        <h1>💥 終極武器</h1>
+        <div class="sub">戰鬥中施放的大招——達里程碑解鎖，用金幣升級威力與冷卻</div>
+        <div id="ultimates-list"></div>
+      </div>
+
       <div id="battle-screen" class="screen">
         <div id="canvas-wrap">
           <canvas id="game"></canvas>
           <div id="wave-banner"></div>
+          <div id="ult-bar"></div>
         </div>
         <div id="bottom">
           <div id="tabs"></div>

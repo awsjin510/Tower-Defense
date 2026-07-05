@@ -3,6 +3,7 @@ import { computeStats, IN_RUN_UPGRADES, type Levels } from './stats';
 import { upgradeCost, isMaxed } from './economy';
 import { applyPerks, isPerkWave, PERK_CONFIG, rollPerkChoices } from './perks';
 import { applyCardStatMods, emptyMods, type RunMods } from './cards';
+import type { ResolvedUltimate } from './ultimates';
 import { mulberry32 } from './rng';
 import {
   ENEMY_TYPES,
@@ -52,6 +53,12 @@ export interface SimState {
   pendingPerks: string[] | null;
   /** 本場裝備卡片組出的加成（整場固定） */
   mods: RunMods;
+  /** 本場可用的終極武器（已解析等級參數） */
+  ultimates: ResolvedUltimate[];
+  /** 各終極武器的剩餘冷卻秒數（0 = 可施放） */
+  ultCooldowns: Record<string, number>;
+  /** 進行中的限時終極效果（黃金塔） */
+  ultActive: Array<{ id: string; remaining: number; coinMult: number }>;
   /** 本 tick 的視覺事件；step() 開頭清空，故 headless 模擬不會無限成長 */
   events: SimEvent[];
 }
@@ -60,7 +67,8 @@ export function newRun(
   workshopLevels: Levels,
   seed: number,
   mods: RunMods = emptyMods(),
-  researchLevels: Levels = {}
+  researchLevels: Levels = {},
+  ultimates: ResolvedUltimate[] = []
 ): SimState {
   const inRunLevels: Levels = {};
   const stats = computeStats(workshopLevels, inRunLevels, researchLevels);
@@ -90,8 +98,44 @@ export function newRun(
     perks: [],
     pendingPerks: null,
     mods,
+    ultimates,
+    ultCooldowns: Object.fromEntries(ultimates.map((u) => [u.id, 0])),
+    ultActive: [],
     events: [],
   };
+}
+
+/** 目前所有限時終極（黃金塔）疊乘出的金幣倍率 */
+function coinMultiplier(s: SimState): number {
+  let m = 1;
+  for (const a of s.ultActive) m *= a.coinMult;
+  return m;
+}
+
+/**
+ * 施放終極武器；成功回傳 true。冷卻中或未持有回傳 false。
+ * 由 UI 在戰鬥中呼叫（headless 模擬不會施放，故不影響平衡）。
+ */
+export function activateUltimate(s: SimState, id: string): boolean {
+  if (s.over || s.pendingPerks) return false;
+  const ult = s.ultimates.find((u) => u.id === id);
+  if (!ult) return false;
+  if ((s.ultCooldowns[id] ?? 0) > 0) return false;
+  s.ultCooldowns[id] = ult.cooldown;
+  if (ult.kind === 'coinBuff') {
+    s.ultActive.push({ id, remaining: ult.duration, coinMult: ult.coinMult });
+    s.events.push({ type: 'ultActivate', id, color: ult.color });
+  } else {
+    // 黑洞：對全場敵人造成塔傷的倍率傷害（瞬發、確定性）
+    const dmg = s.stats.damage * ult.damageMult;
+    for (const e of [...s.enemies]) {
+      e.hp -= dmg;
+      s.events.push({ type: 'hit', id: e.id, x: e.x, y: e.y, dmg, crit: true });
+      if (e.hp <= 0) killEnemy(s, e);
+    }
+    s.events.push({ type: 'ultNuke', color: ult.color });
+  }
+  return true;
 }
 
 /** 建立敵人；不給座標時放在場邊隨機角度（Boss 召喚會指定在 Boss 腳下） */
@@ -123,8 +167,9 @@ function spawnEnemy(s: SimState, typeId: string): void {
 }
 
 function killEnemy(s: SimState, e: Enemy): void {
-  s.cash += e.cashValue * s.stats.cashPerKill;
-  s.coinsEarned += e.coinValue * s.stats.coinBonus;
+  const coinMult = coinMultiplier(s); // 黃金塔啟用時倍增
+  s.cash += e.cashValue * s.stats.cashPerKill * coinMult;
+  s.coinsEarned += e.coinValue * s.stats.coinBonus * coinMult;
   s.kills++;
   // 吸血卡：擊殺回復血量上限的比例
   if (s.mods.lifestealFrac > 0) {
@@ -141,7 +186,7 @@ function startNextWave(s: SimState): void {
   if (s.mods.interest > 0) {
     s.cash += Math.min(s.cash * s.mods.interest, s.stats.cashPerWave * 10);
   }
-  s.coinsEarned += waveCoinBonus(s.wave) * s.stats.coinBonus;
+  s.coinsEarned += waveCoinBonus(s.wave) * s.stats.coinBonus * coinMultiplier(s);
   s.wave++;
   s.spawnList = waveComposition(s.wave, s.rng);
   s.spawnIdx = 0;
@@ -173,6 +218,15 @@ export function step(s: SimState, dt: number): void {
   // Perk 選擇中：模擬暫停（確定性不受 UI 思考時間影響）
   if (s.pendingPerks) return;
   s.time += dt;
+
+  // 終極武器冷卻與限時效果
+  for (const id in s.ultCooldowns) {
+    if (s.ultCooldowns[id] > 0) s.ultCooldowns[id] = Math.max(0, s.ultCooldowns[id] - dt);
+  }
+  for (let i = s.ultActive.length - 1; i >= 0; i--) {
+    s.ultActive[i].remaining -= dt;
+    if (s.ultActive[i].remaining <= 0) s.ultActive.splice(i, 1);
+  }
 
   s.towerHp = Math.min(s.towerHp + s.stats.healthRegen * dt, s.stats.maxHealth);
 
