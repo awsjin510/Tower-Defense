@@ -6,7 +6,7 @@ import {
   OFFLINE_EFFICIENCY,
   OFFLINE_MIN_SECONDS,
 } from '../src/core/offline';
-import { defaultSave, migrate } from '../src/meta/save';
+import { defaultSave, migrate, SAVE_VERSION } from '../src/meta/save';
 import { settleRun } from '../src/meta/workshop';
 
 describe('offline', () => {
@@ -42,10 +42,10 @@ describe('offline', () => {
     expect(save.coinRate).toBe(3);
   });
 
-  it('v2 存檔遷移到 v3：補 coinRate/lastSeenAt，首次不結算離線', () => {
+  it('v2 存檔遷移到最新版：補 coinRate/lastSeenAt，首次不結算離線', () => {
     const v2 = { version: 2, coins: 50, workshopLevels: { damage: 3 }, bestWave: 20, totalRuns: 4, totalKills: 99, updatedAt: 123 };
     const migrated = migrate(v2);
-    expect(migrated.version).toBe(3);
+    expect(migrated.version).toBe(SAVE_VERSION);
     expect(migrated.coins).toBe(50);
     expect(migrated.coinRate).toBe(0);
     expect(migrated.lastSeenAt).toBe(0);

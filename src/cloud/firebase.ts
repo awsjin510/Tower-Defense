@@ -2,8 +2,14 @@ import { getApp, getApps, initializeApp, type FirebaseOptions } from 'firebase/a
 import {
   getAuth,
   GoogleAuthProvider,
+  EmailAuthProvider,
   onAuthStateChanged,
   signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  linkWithCredential,
+  updatePassword,
+  verifyBeforeUpdateEmail,
   signOut,
   type User,
 } from 'firebase/auth';
@@ -42,6 +48,43 @@ export async function signInGoogle(): Promise<User> {
 
 export async function signOutGoogle(): Promise<void> {
   await signOut(services().auth);
+}
+
+// ---------- Email / 密碼 認證 ----------
+
+export async function signInEmail(email: string, password: string): Promise<User> {
+  const { auth } = services();
+  return (await signInWithEmailAndPassword(auth, email.trim(), password)).user;
+}
+
+export async function signUpEmail(email: string, password: string): Promise<User> {
+  const { auth } = services();
+  return (await createUserWithEmailAndPassword(auth, email.trim(), password)).user;
+}
+
+/**
+ * 把 Email/密碼連結到目前已登入的帳號（例如已用 Google 登入者加設密碼登入方式）。
+ * 若尚未登入，退化為直接以 Email 註冊新帳號。
+ */
+export async function linkEmail(email: string, password: string): Promise<User> {
+  const { auth } = services();
+  const user = auth.currentUser;
+  if (!user) return signUpEmail(email, password);
+  const cred = EmailAuthProvider.credential(email.trim(), password);
+  return (await linkWithCredential(user, cred)).user;
+}
+
+/** 變更 Email：寄驗證信到新信箱，玩家點連結後才生效（Firebase 安全流程） */
+export async function changeEmail(newEmail: string): Promise<void> {
+  const { auth } = services();
+  if (!auth.currentUser) throw new Error('尚未登入');
+  await verifyBeforeUpdateEmail(auth.currentUser, newEmail.trim());
+}
+
+export async function changePassword(newPassword: string): Promise<void> {
+  const { auth } = services();
+  if (!auth.currentUser) throw new Error('尚未登入');
+  await updatePassword(auth.currentUser, newPassword);
 }
 
 export async function loadCloudSave(uid: string): Promise<SaveData | null> {
