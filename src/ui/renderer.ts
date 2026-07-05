@@ -1,5 +1,6 @@
 import { ARENA_RADIUS, TOWER_RADIUS, type SimState } from '../core/sim';
 import { ENEMY_TYPES } from '../core/waves';
+import { zoneForWave } from '../core/zones';
 import type { Enemy } from '../core/types';
 import type { Vfx } from './vfx';
 
@@ -30,6 +31,17 @@ function makeStars(n: number, spread: number, seed: number): Star[] {
 }
 const STARS_FAR = makeStars(60, WORLD * 1.4, 1);
 const STARS_NEAR = makeStars(30, WORLD * 1.4, 99);
+
+// 能量信標：戰區主題的場邊脈動光點（固定 6 座，均分在生成圈上）
+const BEACON_COUNT = 6;
+
+/** 主題色 #rrggbb → rgba 字串 */
+function tint(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 /** 描出敵人形狀路徑（不填色），讓呼叫端可先填底色再疊閃白 */
 function traceEnemy(ctx: CanvasRenderingContext2D, e: Enemy, time: number): void {
@@ -113,6 +125,15 @@ export function render(
   ctx.translate(w / 2 + ox, h / 2 + oy);
   ctx.scale(scale, scale);
 
+  const zone = zoneForWave(s.wave);
+
+  // 主題光影：戰區色的環境輻射光（中心亮、邊緣散）
+  const glow = ctx.createRadialGradient(0, 0, ARENA_RADIUS * 0.1, 0, 0, ARENA_RADIUS * 1.25);
+  glow.addColorStop(0, zone.glow);
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(-WORLD / 2, -WORLD / 2, WORLD, WORLD);
+
   // 星空（視差漂移）
   const drift = s.time * 4;
   ctx.fillStyle = '#ffffff';
@@ -130,8 +151,35 @@ export function render(
   }
   ctx.globalAlpha = 1;
 
-  // 生成圈與射程圈
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  // 雷達網格：戰區色的同心圓 + 輻條 + 旋轉掃描線
+  ctx.strokeStyle = zone.grid;
+  ctx.lineWidth = 1.5 / scale;
+  for (let ring = 1; ring <= 3; ring++) {
+    ctx.beginPath();
+    ctx.arc(0, 0, (ARENA_RADIUS / 3) * ring, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    ctx.moveTo(Math.cos(a) * TOWER_RADIUS * 2, Math.sin(a) * TOWER_RADIUS * 2);
+    ctx.lineTo(Math.cos(a) * ARENA_RADIUS, Math.sin(a) * ARENA_RADIUS);
+  }
+  ctx.stroke();
+  // 掃描線（帶漸淡尾巴）
+  const sweep = s.time * 0.7;
+  const sweepGrad = ctx.createLinearGradient(0, 0, Math.cos(sweep) * ARENA_RADIUS, Math.sin(sweep) * ARENA_RADIUS);
+  sweepGrad.addColorStop(0, 'rgba(0,0,0,0)');
+  sweepGrad.addColorStop(1, tint(zone.accent, 0.35));
+  ctx.strokeStyle = sweepGrad;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(Math.cos(sweep) * ARENA_RADIUS, Math.sin(sweep) * ARENA_RADIUS);
+  ctx.stroke();
+
+  // 生成圈（戰區色）與射程圈
+  ctx.strokeStyle = tint(zone.accent, 0.22);
   ctx.lineWidth = 2 / scale;
   ctx.beginPath();
   ctx.arc(0, 0, ARENA_RADIUS, 0, Math.PI * 2);
@@ -142,6 +190,24 @@ export function render(
   ctx.arc(0, 0, s.stats.range, 0, Math.PI * 2);
   ctx.stroke();
   ctx.setLineDash([]);
+
+  // 能量信標：生成圈上的脈動光點
+  for (let i = 0; i < BEACON_COUNT; i++) {
+    const a = (i / BEACON_COUNT) * Math.PI * 2 + Math.PI / BEACON_COUNT;
+    const pulse = 0.5 + Math.sin(s.time * 2.2 + i * 1.7) * 0.5;
+    const bx = Math.cos(a) * ARENA_RADIUS;
+    const by = Math.sin(a) * ARENA_RADIUS;
+    ctx.globalAlpha = 0.35 + pulse * 0.5;
+    ctx.fillStyle = zone.accent;
+    ctx.beginPath();
+    ctx.arc(bx, by, 3 + pulse * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = (0.35 + pulse * 0.5) * 0.35;
+    ctx.beginPath();
+    ctx.arc(bx, by, 8 + pulse * 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 
   // 死亡粒子（畫在敵人下方）
   for (const p of vfx.particles) {
@@ -245,9 +311,15 @@ export function render(
   ctx.lineTo(Math.cos(aim) * TOWER_RADIUS * 1.4, Math.sin(aim) * TOWER_RADIUS * 1.4);
   ctx.stroke();
   ctx.lineCap = 'butt';
+  // 塔核心：戰區主題色的脈動能量核
+  const corePulse = 0.5 + Math.sin(s.time * 3.2) * 0.5;
   ctx.fillStyle = '#cfe4ff';
   ctx.beginPath();
   ctx.arc(0, 0, TOWER_RADIUS * 0.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = tint(zone.accent, 0.55 + corePulse * 0.35);
+  ctx.beginPath();
+  ctx.arc(0, 0, TOWER_RADIUS * (0.26 + corePulse * 0.09), 0, Math.PI * 2);
   ctx.fill();
 
   const hpRatio = Math.max(s.towerHp / s.stats.maxHealth, 0);

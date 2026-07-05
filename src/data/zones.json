@@ -1,0 +1,67 @@
+{
+  "config": {
+    "zoneEvery": 10
+  },
+  "zones": [
+    {
+      "id": "verdant",
+      "name": "翠綠曠野",
+      "accent": "#56d364",
+      "grid": "rgba(86, 211, 100, 0.10)",
+      "glow": "rgba(86, 211, 100, 0.05)",
+      "mods": {
+        "hpMult": 1.0,
+        "speedMult": 1.0,
+        "dmgMult": 1.0,
+        "countMult": 1.0,
+        "cashMult": 1.0,
+        "coinMult": 1.0
+      }
+    },
+    {
+      "id": "frost",
+      "name": "寒冰荒原",
+      "accent": "#58c6ff",
+      "grid": "rgba(88, 198, 255, 0.11)",
+      "glow": "rgba(88, 198, 255, 0.055)",
+      "mods": {
+        "hpMult": 1.35,
+        "speedMult": 1.0,
+        "dmgMult": 1.15,
+        "countMult": 1.0,
+        "cashMult": 1.0,
+        "coinMult": 1.1
+      }
+    },
+    {
+      "id": "magma",
+      "name": "熔岩裂谷",
+      "accent": "#ff6b3d",
+      "grid": "rgba(255, 107, 61, 0.11)",
+      "glow": "rgba(255, 92, 40, 0.06)",
+      "mods": {
+        "hpMult": 1.05,
+        "speedMult": 1.15,
+        "dmgMult": 1.35,
+        "countMult": 1.0,
+        "cashMult": 1.0,
+        "coinMult": 1.25
+      }
+    },
+    {
+      "id": "void",
+      "name": "虛空深淵",
+      "accent": "#b878ff",
+      "grid": "rgba(184, 120, 255, 0.11)",
+      "glow": "rgba(160, 90, 255, 0.06)",
+      "mods": {
+        "hpMult": 1.1,
+        "speedMult": 1.05,
+        "dmgMult": 1.15,
+        "countMult": 1.05,
+        "cashMult": 1.1,
+        "coinMult": 1.4
+      }
+    }
+  ]
+}
