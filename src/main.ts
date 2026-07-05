@@ -4,7 +4,7 @@ import { formatNumber, isMaxed, upgradeCost } from './core/economy';
 import { perkById } from './core/perks';
 import { offlineCoins } from './core/offline';
 import type { StatId, UpgradeCategory, UpgradeDef } from './core/types';
-import { applySave, localStorageStore, type SaveData } from './meta/save';
+import { applySave, ensurePlayerId, localStorageStore, type SaveData } from './meta/save';
 import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
 import { render } from './ui/renderer';
 import { Vfx } from './ui/vfx';
@@ -14,8 +14,11 @@ type CloudModule = typeof import('./cloud/firebase');
 
 const store = localStorageStore();
 const save: SaveData = store.load();
+// 帳號代碼：首次開啟時產生（記憶體），下次任何存檔時一併持久化，避免多寫一次而干擾雲端衝突判定
+ensurePlayerId(save);
 let cloudUser: User | null = null;
 let cloudModule: CloudModule | null = null;
+let cloudReady = false;
 let cloudWrite = Promise.resolve();
 const cloudConfigPresent = Boolean(
   import.meta.env.VITE_FIREBASE_API_KEY &&
@@ -89,6 +92,7 @@ async function initCloud(): Promise<void> {
     return;
   }
 
+  cloudReady = true;
   authButton.textContent = 'Google 登入';
   authButton.addEventListener('click', async () => {
     setAuthStatus(cloudUser ? '正在登出…' : '正在登入…', true);
@@ -108,6 +112,7 @@ async function initCloud(): Promise<void> {
       setAuthStatus('本機存檔');
       authButton.disabled = false;
     }
+    renderAccountIfOpen();
   });
 }
 
@@ -386,6 +391,192 @@ document.addEventListener('visibilitychange', () => {
     save.lastSeenAt = Date.now();
     store.save(save);
   }
+});
+
+// ---------- 帳戶面板（帳號 ID + Email 連動） ----------
+
+const accountModal = $('#account-modal');
+const accountBtn = $('#account-btn') as HTMLButtonElement;
+
+/** Email 遮罩顯示：ke***10@gmail.com */
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!domain) return email;
+  if (local.length <= 4) return `${local[0] ?? ''}***@${domain}`;
+  return `${local.slice(0, 2)}***${local.slice(-2)}@${domain}`;
+}
+
+function authCode(e: unknown): string {
+  return (e as { code?: string })?.code ?? '';
+}
+
+/** 把 Firebase 認證錯誤碼轉成看得懂的中文 */
+function authMessage(e: unknown): string {
+  const map: Record<string, string> = {
+    'auth/invalid-email': 'Email 格式不正確',
+    'auth/weak-password': '密碼太弱（至少 6 碼）',
+    'auth/email-already-in-use': '這個 Email 已被使用',
+    'auth/wrong-password': '密碼錯誤',
+    'auth/invalid-credential': 'Email 或密碼錯誤',
+    'auth/requires-recent-login': '基於安全考量，請先登出再重新登入後再試',
+    'auth/too-many-requests': '嘗試次數過多，請稍後再試',
+    'auth/popup-closed-by-user': '登入視窗被關閉',
+    'auth/network-request-failed': '網路連線失敗',
+    'auth/credential-already-in-use': '這個 Email 已連結到其他帳號',
+    'auth/operation-not-allowed': '此登入方式尚未在後台啟用',
+  };
+  return map[authCode(e)] ?? (e instanceof Error ? e.message : '未知錯誤');
+}
+
+function renderAccountIfOpen(): void {
+  if (accountModal.classList.contains('active')) renderAccount();
+}
+
+function addAccountAction(label: string, handler: () => void | Promise<void>, danger = false): void {
+  const b = document.createElement('button');
+  b.className = danger ? 'account-action danger' : 'account-action';
+  b.textContent = label;
+  b.addEventListener('click', () => void handler());
+  $('#account-actions').appendChild(b);
+}
+
+/** 統一包住雲端動作：失敗跳中文提示、結束後重繪面板 */
+async function runCloud(label: string, fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (e) {
+    alert(`${label}：${authMessage(e)}`);
+  }
+  renderAccountIfOpen();
+}
+
+function askEmailPassword(pwLabel: string): { email: string; password: string } | null {
+  const email = prompt('請輸入 Email');
+  if (!email) return null;
+  const password = prompt(pwLabel);
+  if (!password) return null;
+  return { email: email.trim(), password };
+}
+
+async function emailSignInFlow(): Promise<void> {
+  const creds = askEmailPassword('請輸入密碼');
+  if (!creds) return;
+  try {
+    await cloudModule!.signInEmail(creds.email, creds.password);
+  } catch (e) {
+    if (authCode(e) === 'auth/user-not-found') {
+      if (confirm('查無此帳號，要用這組 Email／密碼註冊新帳號嗎？')) {
+        await runCloud('註冊', () => cloudModule!.signUpEmail(creds.email, creds.password).then(() => undefined));
+        return;
+      }
+    } else {
+      alert(`登入失敗：${authMessage(e)}`);
+    }
+  }
+  renderAccountIfOpen();
+}
+
+async function linkEmailFlow(): Promise<void> {
+  const creds = askEmailPassword('為此帳號設定密碼（至少 6 碼）');
+  if (!creds) return;
+  await runCloud('連結 Email', async () => {
+    await cloudModule!.linkEmail(creds.email, creds.password);
+    alert('已連結 Email，之後可用 Email／密碼登入。');
+  });
+}
+
+async function changeEmailFlow(): Promise<void> {
+  const ne = prompt('請輸入新的 Email');
+  if (!ne) return;
+  await runCloud('變更電子郵件', async () => {
+    await cloudModule!.changeEmail(ne);
+    alert(`已寄出驗證信到 ${ne.trim()}，點擊信中連結後即完成變更。`);
+  });
+}
+
+async function changePasswordFlow(): Promise<void> {
+  const np = prompt('請輸入新密碼（至少 6 碼）');
+  if (!np) return;
+  await runCloud('變更密碼', async () => {
+    await cloudModule!.changePassword(np);
+    alert('密碼已更新。');
+  });
+}
+
+function renderAccount(): void {
+  $('#account-id-val').textContent = save.playerId || '—';
+  const linked = $('#account-linked');
+  const actions = $('#account-actions');
+  linked.innerHTML = '';
+  actions.innerHTML = '';
+
+  // 已連結帳號
+  if (cloudUser?.email) {
+    const row = document.createElement('div');
+    row.className = 'linked-row';
+    row.innerHTML = `<span class="mail"></span><span class="check">✓</span>`;
+    (row.querySelector('.mail') as HTMLElement).textContent = `📧 ${maskEmail(cloudUser.email)}`;
+    linked.appendChild(row);
+  } else {
+    linked.innerHTML = '<div class="linked-none">尚未連結任何帳號</div>';
+  }
+
+  // 雲端未設定：只提供本機 ID
+  if (!cloudReady) {
+    const note = document.createElement('div');
+    note.className = 'account-note';
+    note.textContent =
+      '雲端同步尚未設定，目前僅提供本機帳號 ID。設定 Firebase 後即可用 Email 連動、跨裝置同步進度。';
+    actions.appendChild(note);
+    return;
+  }
+
+  if (!cloudUser) {
+    addAccountAction('📧 使用 Email 登入 / 註冊', emailSignInFlow);
+    addAccountAction('使用 Google 登入', () =>
+      runCloud('Google 登入', () => cloudModule!.signInGoogle().then(() => undefined))
+    );
+    return;
+  }
+
+  const providers = cloudUser.providerData.map((p) => p.providerId);
+  const hasPassword = providers.includes('password');
+  if (!hasPassword) addAccountAction('🔗 連結 Email／密碼', linkEmailFlow);
+  addAccountAction('變更電子郵件', changeEmailFlow);
+  if (hasPassword) addAccountAction('變更密碼', changePasswordFlow);
+  addAccountAction('登出', () => runCloud('登出', () => cloudModule!.signOutGoogle()), true);
+}
+
+accountBtn.addEventListener('click', () => {
+  renderAccount();
+  accountModal.classList.add('active');
+});
+$('#account-close').addEventListener('click', () => accountModal.classList.remove('active'));
+accountModal.addEventListener('click', (e) => {
+  if (e.target === accountModal) accountModal.classList.remove('active');
+});
+$('#account-copy').addEventListener('click', async () => {
+  const btn = $('#account-copy');
+  try {
+    await navigator.clipboard.writeText(save.playerId);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = save.playerId;
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+    } catch {
+      /* 複製不支援時忽略 */
+    }
+    ta.remove();
+  }
+  btn.classList.add('copied');
+  btn.textContent = '✓';
+  setTimeout(() => {
+    btn.classList.remove('copied');
+    btn.textContent = '📋';
+  }, 1200);
 });
 
 function startBattle(): void {

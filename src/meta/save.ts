@@ -1,6 +1,6 @@
 import type { Levels } from '../core/stats';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 const SAVE_KEY = 'tower-defense-save';
 
 export interface SaveData {
@@ -16,6 +16,8 @@ export interface SaveData {
   coinRate: number;
   /** 最後一次在線時間；開啟遊戲時據此結算離線收益（v3 起） */
   lastSeenAt: number;
+  /** 穩定的本機帳號代碼（16 位大寫十六進位）：帳戶識別、Email 連動、客服查詢用（v4 起） */
+  playerId: string;
 }
 
 export function defaultSave(): SaveData {
@@ -29,7 +31,21 @@ export function defaultSave(): SaveData {
     updatedAt: 0,
     coinRate: 0,
     lastSeenAt: 0,
+    playerId: '',
   };
+}
+
+/** 產生一組 16 位大寫十六進位帳號代碼 */
+export function newPlayerId(): string {
+  let id = '';
+  for (let i = 0; i < 16; i++) id += Math.floor(Math.random() * 16).toString(16);
+  return id.toUpperCase();
+}
+
+/** 確保存檔帶有帳號代碼（首次呼叫時產生），回傳該代碼。不主動寫檔，交由下次存檔持久化。 */
+export function ensurePlayerId(save: SaveData): string {
+  if (!save.playerId) save.playerId = newPlayerId();
+  return save.playerId;
 }
 
 /**
@@ -41,6 +57,7 @@ export function migrate(raw: unknown): SaveData {
   const data = { ...defaultSave(), ...(raw as Partial<SaveData>) };
   // 未來版本的遷移在這裡逐段加：if (data.version === 1) { ...; data.version = 2 }
   // v2 → v3：coinRate / lastSeenAt 由 defaultSave 補 0，首次上線不結算離線收益。
+  // v3 → v4：playerId 由 defaultSave 補 ''，首次開啟由 ensurePlayerId 產生。
   data.version = SAVE_VERSION;
   return data;
 }

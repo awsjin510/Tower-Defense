@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { applySave, defaultSave, migrate, SAVE_VERSION } from '../src/meta/save';
+import { applySave, defaultSave, ensurePlayerId, migrate, newPlayerId, SAVE_VERSION } from '../src/meta/save';
 import { buyWorkshopUpgrade, settleRun } from '../src/meta/workshop';
 
 describe('save', () => {
   it('損壞的存檔回退到預設值', () => {
     expect(migrate(null)).toEqual(defaultSave());
     expect(migrate('garbage')).toEqual(defaultSave());
+  });
+
+  it('帳號代碼：newPlayerId 產生 16 位大寫十六進位', () => {
+    const id = newPlayerId();
+    expect(id).toMatch(/^[0-9A-F]{16}$/);
+    expect(newPlayerId()).not.toBe(id); // 幾乎不可能相同
+  });
+
+  it('ensurePlayerId 首次產生、之後穩定不變', () => {
+    const save = defaultSave();
+    expect(save.playerId).toBe('');
+    const id = ensurePlayerId(save);
+    expect(id).toMatch(/^[0-9A-F]{16}$/);
+    expect(save.playerId).toBe(id);
+    expect(ensurePlayerId(save)).toBe(id); // 不覆寫既有代碼
   });
 
   it('缺欄位的舊存檔補齊並升到最新版本', () => {
