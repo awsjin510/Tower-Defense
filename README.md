@@ -2,6 +2,7 @@
 
 放置塔防遊戲（Idle Tower Defense），參考《The Tower - Idle Tower Defense》的設計方向。
 
+- 🎮 **線上遊玩**：https://awsjin510.github.io/Tower-Defense/
 - 📋 完整規劃：[docs/GAME_DESIGN_PLAN.md](docs/GAME_DESIGN_PLAN.md)
 - 🍎 iOS 上架評估：[docs/IOS_RELEASE_PLAN.md](docs/IOS_RELEASE_PLAN.md)
 
