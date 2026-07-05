@@ -45,6 +45,18 @@ interface Shock {
   color: string;
 }
 
+/** 彈射鏈（多重射擊）：兩點間的閃電弧，含固定抖動點以維持確定外觀 */
+interface Chain {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  crit: boolean;
+  life: number;
+  maxLife: number;
+  jitter: number[];
+}
+
 /**
  * 純視覺特效層——只吃 SimEvent，不回寫任何遊戲狀態。
  * 命中閃白以敵人 id 為鍵存在這裡，核心的 Enemy 結構保持乾淨。
@@ -55,6 +67,7 @@ export class Vfx {
   muzzles: Muzzle[] = [];
   beams: Beam[] = [];
   shocks: Shock[] = [];
+  chains: Chain[] = [];
   /** 黃金塔啟用時的金光殘留（秒） */
   goldGlow = 0;
   flash = new Map<number, number>();
@@ -152,6 +165,12 @@ export class Vfx {
         case 'ultActivate':
           this.goldGlow = Math.max(this.goldGlow, 0.6);
           break;
+        case 'chain': {
+          // 為閃電弧預生成中段抖動（用內部 rng，不污染遊戲 RNG）
+          const jitter = [this.rnd() - 0.5, this.rnd() - 0.5, this.rnd() - 0.5, this.rnd() - 0.5];
+          this.chains.push({ x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, crit: e.crit, life: 0.22, maxLife: 0.22, jitter });
+          break;
+        }
         // 'wave' / 'perkOffer' 由 UI 另行處理
       }
     }
@@ -185,6 +204,10 @@ export class Vfx {
     for (let i = this.shocks.length - 1; i >= 0; i--) {
       this.shocks[i].life -= dt;
       if (this.shocks[i].life <= 0) this.shocks.splice(i, 1);
+    }
+    for (let i = this.chains.length - 1; i >= 0; i--) {
+      this.chains[i].life -= dt;
+      if (this.chains[i].life <= 0) this.chains.splice(i, 1);
     }
     if (this.goldGlow > 0) this.goldGlow = Math.max(0, this.goldGlow - dt);
     for (const [id, t] of this.flash) {

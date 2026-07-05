@@ -1028,6 +1028,7 @@ function startBattle(): void {
   vfx.particles.length = 0;
   vfx.flash.clear();
   vfx.shocks.length = 0;
+  vfx.chains.length = 0;
   vfx.goldGlow = 0;
   workshopScreen.classList.remove('active');
   battleScreen.classList.add('active');

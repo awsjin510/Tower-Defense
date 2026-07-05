@@ -345,7 +345,7 @@ export function step(s: SimState, dt: number): void {
       const hx = target.x;
       const hy = target.y;
       if (target.hp <= 0) killEnemy(s, target);
-      // 彈射卡：對最近的其他敵人造成 60% 傷害（確定性：依距離、id 排序）
+      // 彈射卡：多重射擊——子彈鏈跳到最近的其他敵人（確定性：依距離、id 排序）
       if (s.mods.bounce > 0) {
         const bounceDmg = dmg * 0.6;
         const cands = s.enemies
@@ -353,7 +353,13 @@ export function step(s: SimState, dt: number): void {
           .map((e) => ({ e, d: (e.x - hx) * (e.x - hx) + (e.y - hy) * (e.y - hy) }))
           .sort((a, c) => a.d - c.d || a.e.id - c.e.id)
           .slice(0, s.mods.bounce);
+        let px = hx;
+        let py = hy;
         for (const { e } of cands) {
+          // 鏈狀彈射動畫：從上一命中點連到這隻敵人
+          s.events.push({ type: 'chain', x1: px, y1: py, x2: e.x, y2: e.y, crit: b.crit });
+          px = e.x;
+          py = e.y;
           e.hp -= bounceDmg;
           s.events.push({ type: 'hit', id: e.id, x: e.x, y: e.y, dmg: bounceDmg, crit: false });
           if (e.hp <= 0) killEnemy(s, e);
