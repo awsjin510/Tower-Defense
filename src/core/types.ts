@@ -34,6 +34,12 @@ export interface EnemyTypeDef {
   radius: number;
   color: string;
   minWave: number;
+  /** 遠程敵人：走到這個距離就停下攻擊塔（0/未填 = 近戰） */
+  attackRange?: number;
+  /** Boss 能力：每隔幾秒召喚一批小兵（0/未填 = 不召喚） */
+  summonEvery?: number;
+  summonCount?: number;
+  summonType?: string;
 }
 
 export interface EnemyScaling {
@@ -77,6 +83,11 @@ export interface Enemy {
   coinValue: number;
   radius: number;
   attackTimer: number;
+  /** 遠程敵人的攻擊距離（0 = 近戰貼塔） */
+  attackRange: number;
+  /** 召喚間隔（0 = 無此能力）與倒數 */
+  summonEvery: number;
+  summonTimer: number;
 }
 
 export interface Bullet {
@@ -97,4 +108,7 @@ export type SimEvent =
   | { type: 'kill'; x: number; y: number; typeId: string }
   | { type: 'wave'; wave: number; boss: boolean }
   | { type: 'fire'; angle: number }
-  | { type: 'towerHit'; dmg: number };
+  | { type: 'towerHit'; dmg: number }
+  | { type: 'enemyShot'; x: number; y: number }
+  | { type: 'summon'; x: number; y: number }
+  | { type: 'perkOffer'; wave: number; choices: string[] };

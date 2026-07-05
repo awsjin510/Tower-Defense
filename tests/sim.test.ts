@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { newRun, step, TICK_DT, buyInRunUpgrade } from '../src/core/sim';
+import { newRun, step, TICK_DT, buyInRunUpgrade, choosePerk } from '../src/core/sim';
 import { upgradeCost } from '../src/core/economy';
 import { IN_RUN_UPGRADES } from '../src/core/stats';
 
 function runTicks(s: ReturnType<typeof newRun>, seconds: number): void {
   const ticks = Math.floor(seconds / TICK_DT);
-  for (let i = 0; i < ticks && !s.over; i++) step(s, TICK_DT);
+  for (let i = 0; i < ticks && !s.over; i++) {
+    step(s, TICK_DT);
+    // Perk 波會暫停模擬等待選擇；headless 一律拿第一個
+    if (s.pendingPerks) choosePerk(s, s.pendingPerks[0]);
+  }
 }
 
 describe('sim', () => {

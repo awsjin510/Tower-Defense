@@ -1,6 +1,7 @@
 import type { Bullet, Enemy, SimEvent, Stats } from './types';
 import { computeStats, IN_RUN_UPGRADES, type Levels } from './stats';
 import { upgradeCost, isMaxed } from './economy';
+import { applyPerks, isPerkWave, rollPerkChoices } from './perks';
 import { mulberry32 } from './rng';
 import {
   ENEMY_TYPES,
@@ -42,6 +43,10 @@ export interface SimState {
   over: boolean;
   rng: () => number;
   nextEnemyId: number;
+  /** 本場已取得的 Perk（死亡歸零，與場內升級同生命週期） */
+  perks: string[];
+  /** 待選擇的 Perk 三選一；非 null 時模擬暫停，等 choosePerk() */
+  pendingPerks: string[] | null;
   /** 本 tick 的視覺事件；step() 開頭清空，故 headless 模擬不會無限成長 */
   events: SimEvent[];
 }
@@ -70,19 +75,22 @@ export function newRun(workshopLevels: Levels, seed: number): SimState {
     over: false,
     rng,
     nextEnemyId: 1,
+    perks: [],
+    pendingPerks: null,
     events: [],
   };
 }
 
-function spawnEnemy(s: SimState, typeId: string): void {
+/** 建立敵人；不給座標時放在場邊隨機角度（Boss 召喚會指定在 Boss 腳下） */
+function makeEnemy(s: SimState, typeId: string, x?: number, y?: number): Enemy {
   const def = ENEMY_TYPES.find((t) => t.id === typeId)!;
   const angle = s.rng() * Math.PI * 2;
   const hp = enemyHp(s.wave, def.hpMult);
-  s.enemies.push({
+  return {
     id: s.nextEnemyId++,
     typeId,
-    x: Math.cos(angle) * ARENA_RADIUS,
-    y: Math.sin(angle) * ARENA_RADIUS,
+    x: x ?? Math.cos(angle) * ARENA_RADIUS,
+    y: y ?? Math.sin(angle) * ARENA_RADIUS,
     hp,
     maxHp: hp,
     speed: enemySpeed(s.wave, def.speedMult),
@@ -91,7 +99,14 @@ function spawnEnemy(s: SimState, typeId: string): void {
     coinValue: enemyCoin(s.wave, def.rewardMult),
     radius: def.radius,
     attackTimer: 0,
-  });
+    attackRange: def.attackRange ?? 0,
+    summonEvery: def.summonEvery ?? 0,
+    summonTimer: def.summonEvery ?? 0,
+  };
+}
+
+function spawnEnemy(s: SimState, typeId: string): void {
+  s.enemies.push(makeEnemy(s, typeId));
 }
 
 function killEnemy(s: SimState, e: Enemy): void {
@@ -111,11 +126,30 @@ function startNextWave(s: SimState): void {
   s.spawnIdx = 0;
   s.spawnTimer = 0;
   s.events.push({ type: 'wave', wave: s.wave, boss: isBossWave(s.wave) });
+  if (isPerkWave(s.wave)) {
+    const choices = rollPerkChoices(s.perks, s.rng);
+    if (choices.length > 0) {
+      s.pendingPerks = choices;
+      s.events.push({ type: 'perkOffer', wave: s.wave, choices });
+    }
+  }
+}
+
+/** 屬性重算（升級/Perk 後呼叫）：血量上限提高時補差額，降低時夾回上限 */
+function recomputeStats(s: SimState): void {
+  const prevMax = s.stats.maxHealth;
+  const next = computeStats(s.workshopLevels, s.inRunLevels);
+  applyPerks(next, s.perks);
+  s.stats = next;
+  if (next.maxHealth > prevMax) s.towerHp += next.maxHealth - prevMax;
+  s.towerHp = Math.min(s.towerHp, next.maxHealth);
 }
 
 export function step(s: SimState, dt: number): void {
   if (s.over) return;
   s.events.length = 0;
+  // Perk 選擇中：模擬暫停（確定性不受 UI 思考時間影響）
+  if (s.pendingPerks) return;
   s.time += dt;
 
   s.towerHp = Math.min(s.towerHp + s.stats.healthRegen * dt, s.stats.maxHealth);
@@ -134,12 +168,14 @@ export function step(s: SimState, dt: number): void {
     s.interWaveTimer = WAVE_CONFIG.interWaveDelay;
   }
 
-  // 敵人移動與攻擊
+  // 敵人移動與攻擊（遠程敵人走到 attackRange 就停下開火；近戰貼塔）
+  const summoned: Enemy[] = [];
   for (const e of s.enemies) {
     const dist = Math.hypot(e.x, e.y);
     const contact = TOWER_RADIUS + e.radius;
-    if (dist > contact) {
-      const move = Math.min(e.speed * dt, dist - contact);
+    const standoff = Math.max(contact, e.attackRange);
+    if (dist > standoff) {
+      const move = Math.min(e.speed * dt, dist - standoff);
       e.x -= (e.x / dist) * move;
       e.y -= (e.y / dist) * move;
       e.attackTimer = 0;
@@ -148,10 +184,27 @@ export function step(s: SimState, dt: number): void {
       if (e.attackTimer <= 0) {
         s.towerHp -= e.dmg;
         s.events.push({ type: 'towerHit', dmg: e.dmg });
+        if (e.attackRange > 0) s.events.push({ type: 'enemyShot', x: e.x, y: e.y });
         e.attackTimer += ENEMY_ATTACK_INTERVAL;
       }
     }
+    // Boss 召喚：在自己腳下叫出小兵
+    if (e.summonEvery > 0) {
+      e.summonTimer -= dt;
+      if (e.summonTimer <= 0) {
+        e.summonTimer += e.summonEvery;
+        const def = ENEMY_TYPES.find((t) => t.id === e.typeId)!;
+        const count = def.summonCount ?? 1;
+        const typeId = def.summonType ?? 'normal';
+        for (let i = 0; i < count; i++) {
+          const a = s.rng() * Math.PI * 2;
+          summoned.push(makeEnemy(s, typeId, e.x + Math.cos(a) * (e.radius + 12), e.y + Math.sin(a) * (e.radius + 12)));
+        }
+        s.events.push({ type: 'summon', x: e.x, y: e.y });
+      }
+    }
   }
+  s.enemies.push(...summoned);
 
   // 塔索敵開火（用距離平方比較，冷卻可在單 tick 內多次觸發以支援高攻速）
   const cooldown = 1 / s.stats.attackSpeed;
@@ -223,8 +276,15 @@ export function buyInRunUpgrade(s: SimState, upgradeId: string): boolean {
   if (s.cash < cost) return false;
   s.cash -= cost;
   s.inRunLevels[upgradeId] = level + 1;
-  const prevMax = s.stats.maxHealth;
-  s.stats = computeStats(s.workshopLevels, s.inRunLevels);
-  if (s.stats.maxHealth > prevMax) s.towerHp += s.stats.maxHealth - prevMax;
+  recomputeStats(s);
+  return true;
+}
+
+/** 從待選 Perk 中選一個；成功時回傳 true 並恢復模擬 */
+export function choosePerk(s: SimState, perkId: string): boolean {
+  if (!s.pendingPerks || !s.pendingPerks.includes(perkId)) return false;
+  s.perks.push(perkId);
+  s.pendingPerks = null;
+  recomputeStats(s);
   return true;
 }

@@ -1,4 +1,4 @@
-import { buyInRunUpgrade, newRun, step, TICK_DT, type SimState } from '../src/core/sim';
+import { buyInRunUpgrade, choosePerk, newRun, step, TICK_DT, type SimState } from '../src/core/sim';
 import { IN_RUN_UPGRADES, WORKSHOP_UPGRADES, type Levels } from '../src/core/stats';
 import { upgradeCost, isMaxed } from '../src/core/economy';
 import { buyWorkshopUpgrade } from '../src/meta/workshop';
@@ -28,6 +28,8 @@ export function autoplayRun(workshopLevels: Levels, seed: number): SimState {
   const maxTicks = Math.floor((2 * 3600) / TICK_DT);
   for (let tick = 0; tick < maxTicks && !s.over; tick++) {
     step(s, TICK_DT);
+    // Perk 三選一：貪婪 AI 拿第一個（模擬暫停直到選完）
+    if (s.pendingPerks) choosePerk(s, s.pendingPerks[0]);
     if (tick % 15 === 0) greedyBuyInRun(s);
   }
   return s;

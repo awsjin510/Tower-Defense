@@ -55,6 +55,23 @@ function traceEnemy(ctx: CanvasRenderingContext2D, e: Enemy, time: number): void
       ctx.roundRect(e.x - d, e.y - d, d * 2, d * 2, r * 0.35);
       break;
     }
+    case 'sniper': {
+      // 菱形（尖端朝塔），遠程單位的識別形
+      const h = Math.atan2(-e.y, -e.x);
+      const pts = [
+        [h, r * 1.4],
+        [h + Math.PI / 2, r * 0.8],
+        [h + Math.PI, r * 1.1],
+        [h - Math.PI / 2, r * 0.8],
+      ] as const;
+      pts.forEach(([a, rr], i) => {
+        const px = e.x + Math.cos(a) * rr;
+        const py = e.y + Math.sin(a) * rr;
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      });
+      ctx.closePath();
+      break;
+    }
     case 'boss': {
       // 六角形
       for (let i = 0; i < 6; i++) {
@@ -133,6 +150,18 @@ export function render(
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
     ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // 遠程敵人的射擊光束（敵人 → 塔）
+  for (const bm of vfx.beams) {
+    ctx.globalAlpha = Math.min(bm.life / 0.12, 1) * 0.8;
+    ctx.strokeStyle = '#3cc8e0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(bm.x, bm.y);
+    ctx.lineTo(0, 0);
+    ctx.stroke();
   }
   ctx.globalAlpha = 1;
 

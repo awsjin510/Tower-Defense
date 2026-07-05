@@ -135,6 +135,50 @@
         margin-top: 16px; width: 100%; padding: 12px; background: #1f6feb; color: #fff;
         border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer;
       }
+
+      /* Perk 三選一：戰鬥暫停時的覆蓋層 */
+      #perk-overlay {
+        position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+        background: rgba(1, 4, 9, 0.82); z-index: 12; padding: 16px;
+      }
+      #perk-overlay.active { display: flex; }
+      #perk-overlay .perk-box {
+        background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+        padding: 20px; width: 100%; max-width: 400px; animation: cardPop 0.3s ease-out;
+      }
+      #perk-overlay h2 { font-size: 18px; text-align: center; }
+      #perk-overlay .sub { color: #8b949e; font-size: 12px; text-align: center; margin: 4px 0 14px; }
+      .perk-card {
+        display: flex; flex-direction: column; gap: 3px; width: 100%; margin: 8px 0;
+        background: #21262d; border: 1px solid #3b82f6; border-radius: 10px;
+        padding: 12px 14px; color: #e6edf3; cursor: pointer; text-align: left;
+        min-height: 44px; transition: transform 0.06s, box-shadow 0.15s;
+        box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25);
+      }
+      .perk-card:active { transform: scale(0.97); }
+      .perk-card .perk-name { font-size: 15px; font-weight: 800; }
+      .perk-card .perk-desc { font-size: 12px; color: #8b949e; }
+      .perk-card.risky { border-color: #f85149; box-shadow: 0 0 0 1px rgba(248, 81, 73, 0.3); }
+      .perk-card.risky .perk-name::after { content: " ⚠ 高風險"; font-size: 11px; color: #f85149; }
+
+      /* 離線收益結算 */
+      #offline-modal {
+        position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+        background: rgba(1, 4, 9, 0.8); z-index: 11;
+      }
+      #offline-modal.active { display: flex; }
+      #offline-modal .card {
+        background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+        padding: 24px 32px; text-align: center; min-width: 260px; animation: cardPop 0.3s ease-out;
+      }
+      #offline-modal h2 { margin-bottom: 14px; font-size: 18px; }
+      #offline-modal .row { display: flex; justify-content: space-between; gap: 24px; margin: 6px 0; font-size: 14px; }
+      #offline-modal .row .label { color: #8b949e; }
+      #offline-modal .row .value { font-weight: 700; font-variant-numeric: tabular-nums; }
+      #offline-modal button {
+        margin-top: 16px; width: 100%; padding: 12px; background: #238636; color: #fff;
+        border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer;
+      }
     </style>
   </head>
   <body>
@@ -165,6 +209,22 @@
           <h2>⚔️ 戰鬥結束</h2>
           <div id="results-rows"></div>
           <button id="results-btn">回到工坊</button>
+        </div>
+      </div>
+
+      <div id="perk-overlay">
+        <div class="perk-box">
+          <h2>⭐ 選擇一項強化</h2>
+          <div class="sub" id="perk-sub"></div>
+          <div id="perk-cards"></div>
+        </div>
+      </div>
+
+      <div id="offline-modal">
+        <div class="card">
+          <h2>🌙 離線收益</h2>
+          <div id="offline-rows"></div>
+          <button id="offline-btn">收下</button>
         </div>
       </div>
     </div>

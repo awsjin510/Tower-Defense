@@ -1,6 +1,8 @@
-import { buyInRunUpgrade, newRun, step, TICK_DT, type SimState } from './core/sim';
+import { buyInRunUpgrade, choosePerk, newRun, step, TICK_DT, type SimState } from './core/sim';
 import { IN_RUN_UPGRADES, WORKSHOP_UPGRADES } from './core/stats';
 import { formatNumber, isMaxed, upgradeCost } from './core/economy';
+import { perkById } from './core/perks';
+import { offlineCoins } from './core/offline';
 import type { StatId, UpgradeCategory, UpgradeDef } from './core/types';
 import { applySave, localStorageStore, type SaveData } from './meta/save';
 import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
@@ -43,6 +45,7 @@ function setAuthStatus(text: string, busy = false): void {
 }
 
 function saveProgress(): void {
+  save.lastSeenAt = Date.now();
   store.save(save);
   if (!cloudUser) return;
   const uid = cloudUser.uid;
@@ -295,9 +298,69 @@ function showWaveBanner(wave: number, boss: boolean): void {
   bannerTimer = boss ? 2.4 : 1.6;
 }
 
+// ---------- Perk 三選一（模擬已在 core 暫停，選完才恢復） ----------
+
+const perkOverlay = $('#perk-overlay');
+
+function showPerkChoice(wave: number, choices: string[]): void {
+  $('#perk-sub').textContent = `Wave ${wave} 獎勵 · 本場有效`;
+  const cards = $('#perk-cards');
+  cards.innerHTML = '';
+  for (const id of choices) {
+    const def = perkById(id);
+    if (!def) continue;
+    const btn = document.createElement('button');
+    btn.className = def.risky ? 'perk-card risky' : 'perk-card';
+    btn.innerHTML = `<span class="perk-name"></span><span class="perk-desc"></span>`;
+    (btn.querySelector('.perk-name') as HTMLElement).textContent = def.name;
+    (btn.querySelector('.perk-desc') as HTMLElement).textContent = def.desc;
+    btn.addEventListener('click', () => {
+      if (sim && choosePerk(sim, id)) {
+        perkOverlay.classList.remove('active');
+        refreshBattleButtons();
+      }
+    });
+    cards.appendChild(btn);
+  }
+  perkOverlay.classList.add('active');
+}
+
+// ---------- 離線收益（開啟遊戲時結算一次） ----------
+
+function checkOfflineEarnings(): void {
+  const now = Date.now();
+  const elapsedSec = (now - save.lastSeenAt) / 1000;
+  const gained = save.lastSeenAt > 0 ? offlineCoins(save.coinRate, elapsedSec) : 0;
+  if (gained < 1) return;
+  save.coins += gained;
+  saveProgress();
+  const hours = Math.floor(elapsedSec / 3600);
+  const mins = Math.floor((elapsedSec % 3600) / 60);
+  const durText = hours > 0 ? `${hours} 小時 ${mins} 分` : `${mins} 分鐘`;
+  $('#offline-rows').innerHTML = `
+    <div class="row"><span class="label">離線時間</span><span class="value">${durText}</span></div>
+    <div class="row"><span class="label">獲得金幣</span><span class="value coin" data-offroll>+🪙 0</span></div>`;
+  $('#offline-modal').classList.add('active');
+  rollNumber($('#offline-rows').querySelector('[data-offroll]') as HTMLElement, gained, 0.8, '+🪙 ');
+}
+
+$('#offline-btn').addEventListener('click', () => {
+  $('#offline-modal').classList.remove('active');
+  refreshWorkshop();
+});
+
+// 關閉/切出頁面時記下時間點，回來才能結算離線收益
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    save.lastSeenAt = Date.now();
+    store.save(save);
+  }
+});
+
 function startBattle(): void {
   sim = newRun(save.workshopLevels, (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0);
   resultsShown = false;
+  perkOverlay.classList.remove('active');
   dispCash = 0;
   dispCoin = 0;
   dispHp = sim.stats.maxHealth;
@@ -325,7 +388,7 @@ function rollNumber(el: HTMLElement, target: number, dur: number, prefix: string
 
 function showResults(s: SimState): void {
   const isRecord = s.wave > save.bestWave;
-  settleRun(save, { wave: s.wave, coinsEarned: s.coinsEarned, kills: s.kills });
+  settleRun(save, { wave: s.wave, coinsEarned: s.coinsEarned, kills: s.kills, timeSec: s.time });
   saveProgress();
   $('#results-rows').innerHTML = `
     ${isRecord ? '<div class="record">🏆 新紀錄！</div>' : ''}
@@ -355,6 +418,7 @@ function frame(now: number): void {
       vfx.ingest(sim.events);
       for (const e of sim.events) {
         if (e.type === 'wave') showWaveBanner(e.wave, e.boss);
+        if (e.type === 'perkOffer') showPerkChoice(e.wave, e.choices);
       }
       accumulator -= TICK_DT;
     }
@@ -384,4 +448,5 @@ $('#start-btn').addEventListener('click', startBattle);
 $('#results-btn').addEventListener('click', showWorkshop);
 
 showWorkshop();
+checkOfflineEarnings();
 requestAnimationFrame(frame);
