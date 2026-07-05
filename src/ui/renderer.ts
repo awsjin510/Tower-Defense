@@ -43,6 +43,15 @@ function tint(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** 把顏色朝白色提亮 amt（0..1） */
+function lighten(hex: string, amt: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const m = (c: number) => Math.round(c + (255 - c) * amt);
+  return `rgb(${m(r)}, ${m(g)}, ${m(b)})`;
+}
+
 /** 描出敵人形狀路徑（不填色），讓呼叫端可先填底色再疊閃白 */
 function traceEnemy(ctx: CanvasRenderingContext2D, e: Enemy, time: number): void {
   const r = e.radius;
@@ -114,7 +123,11 @@ export function render(
     canvas.height = h * dpr;
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = '#0a0e14';
+  // 深空底：垂直漸層讓戰場更有景深
+  const bg = ctx.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, '#0b1120');
+  bg.addColorStop(1, '#05070d');
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, w, h);
 
   const scale = Math.min(w, h) / WORLD;
@@ -127,12 +140,22 @@ export function render(
 
   const zone = zoneForWave(s.wave);
 
-  // 主題光影：戰區色的環境輻射光（中心亮、邊緣散）
+  // 主題光影：戰區色的環境輻射光（中心亮、邊緣散）+ 偏移的星雲團塊
   const glow = ctx.createRadialGradient(0, 0, ARENA_RADIUS * 0.1, 0, 0, ARENA_RADIUS * 1.25);
   glow.addColorStop(0, zone.glow);
   glow.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = glow;
   ctx.fillRect(-WORLD / 2, -WORLD / 2, WORLD, WORLD);
+  // 兩團緩慢漂移的星雲，加強戰區氛圍
+  for (let n = 0; n < 2; n++) {
+    const nx = Math.cos(s.time * 0.05 + n * 2.3) * ARENA_RADIUS * 0.55;
+    const ny = Math.sin(s.time * 0.04 + n * 1.7) * ARENA_RADIUS * 0.5;
+    const neb = ctx.createRadialGradient(nx, ny, 0, nx, ny, ARENA_RADIUS * 0.7);
+    neb.addColorStop(0, tint(zone.accent, 0.06));
+    neb.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = neb;
+    ctx.fillRect(-WORLD / 2, -WORLD / 2, WORLD, WORLD);
+  }
 
   // 星空（視差漂移）
   const drift = s.time * 4;
@@ -231,6 +254,38 @@ export function render(
   }
   ctx.globalAlpha = 1;
 
+  // 彈射鏈（多重射擊）：兩點間的發光閃電弧
+  if (vfx.chains.length) {
+    ctx.save();
+    for (const c of vfx.chains) {
+      const a = Math.min(c.life / c.maxLife, 1);
+      const col = c.crit ? '#ff8f5b' : '#7fe0ff';
+      const dx = c.x2 - c.x1;
+      const dy = c.y2 - c.y1;
+      const nx = -dy;
+      const ny = dx;
+      const len = Math.hypot(dx, dy) || 1;
+      const amp = Math.min(len * 0.12, 16);
+      ctx.strokeStyle = col;
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 10;
+      ctx.globalAlpha = a;
+      ctx.lineWidth = c.crit ? 3 : 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(c.x1, c.y1);
+      for (let k = 0; k < 4; k++) {
+        const t = (k + 1) / 5;
+        const off = (c.jitter[k] ?? 0) * amp;
+        ctx.lineTo(c.x1 + dx * t + (nx / len) * off, c.y1 + dy * t + (ny / len) * off);
+      }
+      ctx.lineTo(c.x2, c.y2);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
   // 子彈（發光拖尾）
   ctx.save();
   for (const b of s.bullets) {
@@ -245,9 +300,32 @@ export function render(
 
   // 敵人（形狀 + 血條 + 命中閃白）
   for (const e of s.enemies) {
+    const base = enemyColor.get(e.typeId) ?? '#e05555';
+    // 徑向漸層填色 + 同色外輝光，讓敵人有體積感並在暗背景中發亮
+    ctx.save();
+    ctx.shadowColor = base;
+    ctx.shadowBlur = 9;
+    const grad = ctx.createRadialGradient(
+      e.x - e.radius * 0.35,
+      e.y - e.radius * 0.35,
+      e.radius * 0.1,
+      e.x,
+      e.y,
+      e.radius * 1.15
+    );
+    grad.addColorStop(0, lighten(base, 0.45));
+    grad.addColorStop(1, base);
     traceEnemy(ctx, e, s.time);
-    ctx.fillStyle = enemyColor.get(e.typeId) ?? '#e05555';
+    ctx.fillStyle = grad;
     ctx.fill();
+    ctx.restore();
+    // 細描邊
+    traceEnemy(ctx, e, s.time);
+    ctx.strokeStyle = lighten(base, 0.5);
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.5;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
     if (e.typeId === 'boss') {
       ctx.strokeStyle = 'rgba(212,60,200,0.6)';
       ctx.lineWidth = 3;
@@ -307,10 +385,12 @@ export function render(
   }
   ctx.globalAlpha = 1;
 
+  // 開火閃光：有槍口特效時塔身瞬間增亮（後座回饋）
+  const fireFlash = vfx.muzzles.reduce((m, mz) => Math.max(m, mz.life / 0.06), 0);
   ctx.save();
-  ctx.shadowColor = 'rgba(88,166,255,0.7)';
-  ctx.shadowBlur = 14 + Math.sin(s.time * 2.5) * 5;
-  ctx.fillStyle = '#1f6feb';
+  ctx.shadowColor = fireFlash > 0 ? 'rgba(159,203,255,0.95)' : 'rgba(88,166,255,0.7)';
+  ctx.shadowBlur = 14 + Math.sin(s.time * 2.5) * 5 + fireFlash * 12;
+  ctx.fillStyle = fireFlash > 0.4 ? '#3d86ff' : '#1f6feb';
   ctx.beginPath();
   ctx.arc(0, 0, TOWER_RADIUS, 0, Math.PI * 2);
   ctx.fill();

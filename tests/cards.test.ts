@@ -177,6 +177,8 @@ describe('cards effects in sim', () => {
     expect(s.enemies.find((e) => e.id === 1)!.hp).toBeLessThan(1000);
     expect(s.enemies.find((e) => e.id === 2)!.hp).toBeLessThan(1000);
     expect(s.enemies.find((e) => e.id === 3)!.hp).toBeLessThan(1000);
+    // 每次彈射都發出鏈狀動畫事件（多重射擊動畫的資料來源）
+    expect(s.events.filter((e) => e.type === 'chain').length).toBe(2);
   });
 
   it('頭目剋星卡：對頭目傷害加成', () => {

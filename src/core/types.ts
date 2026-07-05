@@ -113,4 +113,5 @@ export type SimEvent =
   | { type: 'summon'; x: number; y: number }
   | { type: 'perkOffer'; wave: number; choices: string[] }
   | { type: 'ultNuke'; color: string }
-  | { type: 'ultActivate'; id: string; color: string };
+  | { type: 'ultActivate'; id: string; color: string }
+  | { type: 'chain'; x1: number; y1: number; x2: number; y2: number; crit: boolean };
