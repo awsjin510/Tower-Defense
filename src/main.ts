@@ -20,11 +20,13 @@ let cloudUser: User | null = null;
 let cloudModule: CloudModule | null = null;
 let cloudReady = false;
 let cloudWrite = Promise.resolve();
+let cloudRevision = 0;
 const cloudConfigPresent = Boolean(
   import.meta.env.VITE_FIREBASE_API_KEY &&
     import.meta.env.VITE_FIREBASE_AUTH_DOMAIN &&
     import.meta.env.VITE_FIREBASE_PROJECT_ID &&
-    import.meta.env.VITE_FIREBASE_APP_ID
+    import.meta.env.VITE_FIREBASE_APP_ID &&
+    import.meta.env.VITE_CLOUDFLARE_API_URL
 );
 
 let sim: SimState | null = null;
@@ -51,10 +53,10 @@ function saveProgress(): void {
   save.lastSeenAt = Date.now();
   store.save(save);
   if (!cloudUser) return;
-  const uid = cloudUser.uid;
+  const user = cloudUser;
   const snapshot = structuredClone(save);
   cloudWrite = cloudWrite
-    .then(() => cloudModule!.writeCloudSave(uid, snapshot))
+    .then(async () => { cloudRevision = await cloudModule!.writeCloudSave(user, snapshot, cloudRevision); })
     .then(() => setAuthStatus(`☁️ ${cloudUser?.email ?? '已同步'}`))
     .catch(() => setAuthStatus('⚠️ 雲端同步失敗，本機進度已保存'));
 }
@@ -62,13 +64,14 @@ function saveProgress(): void {
 async function reconcileCloud(user: User): Promise<void> {
   setAuthStatus('☁️ 正在同步…', true);
   try {
-    const cloud = await cloudModule!.loadCloudSave(user.uid);
-    if (cloud && cloud.updatedAt > save.updatedAt) {
-      applySave(save, cloud);
+    const result = await cloudModule!.loadCloudSave(user);
+    cloudRevision = result.revision;
+    if (result.save && result.save.updatedAt > save.updatedAt) {
+      applySave(save, result.save);
       store.save(save);
     } else {
       store.save(save);
-      await cloudModule!.writeCloudSave(user.uid, save);
+      cloudRevision = await cloudModule!.writeCloudSave(user, save, cloudRevision);
     }
     setAuthStatus(`☁️ ${user.email ?? 'Google 帳號'}`);
     if (!sim) refreshWorkshop();
@@ -86,7 +89,7 @@ async function initCloud(): Promise<void> {
     return;
   }
   cloudModule = await import('./cloud/firebase');
-  if (!cloudModule.firebaseConfigured) {
+  if (!cloudModule.cloudConfigured) {
     setAuthStatus('本機存檔（雲端尚未設定）');
     authButton.hidden = true;
     return;
@@ -109,6 +112,7 @@ async function initCloud(): Promise<void> {
     authButton.textContent = user ? '登出' : 'Google 登入';
     if (user) void reconcileCloud(user);
     else {
+      cloudRevision = 0;
       setAuthStatus('本機存檔');
       authButton.disabled = false;
     }

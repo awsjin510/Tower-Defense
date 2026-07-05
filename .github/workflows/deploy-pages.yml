@@ -36,6 +36,8 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.FIREBASE_STORAGE_BUCKET }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
+          VITE_CLOUDFLARE_API_URL: ${{ vars.CLOUDFLARE_API_URL }}
+          VITE_ENABLE_APPLE_LOGIN: ${{ vars.ENABLE_APPLE_LOGIN }}
       - uses: actions/configure-pages@v5
         with:
           enablement: true

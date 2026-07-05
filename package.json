@@ -8,15 +8,23 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "balance": "vitest run tests/balance.test.ts"
+    "balance": "vitest run tests/balance.test.ts",
+    "cf:types": "wrangler types worker-configuration.d.ts",
+    "cf:dev": "wrangler dev --local",
+    "cf:migrate:local": "wrangler d1 migrations apply tower-defense --local",
+    "cf:migrate:remote": "wrangler d1 migrations apply tower-defense --remote",
+    "cf:deploy": "wrangler deploy"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260702.1",
     "playwright-core": "^1.61.1",
     "typescript": "^5.5.4",
     "vite": "^8.1.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.9",
+    "wrangler": "^4.107.0"
   },
   "dependencies": {
-    "firebase": "^12.15.0"
+    "firebase": "^12.15.0",
+    "jose": "^6.2.3"
   }
 }
