@@ -47,6 +47,8 @@ import { icon, type IconName } from './ui/icons';
 import { Sound } from './ui/sound';
 import { TIER_CONFIG, tierMods } from './core/tiers';
 import { selectTier, settleTier, tierBest } from './meta/tiers';
+import { isMissionComplete, missionById } from './core/missions';
+import { applyRunToMissions, claimMission, claimableCount, ensureDaily } from './meta/missions';
 import type { User } from 'firebase/auth';
 
 type CloudModule = typeof import('./cloud/firebase');
@@ -63,6 +65,8 @@ const offlineResearch = collectResearch(save, Date.now());
 if (offlineResearch) store.save(save);
 // 終極武器：依歷史最高波次補齊里程碑解鎖（由 bestWave 推導，不需強制寫檔）
 syncUltimateUnlocks(save);
+// 每日任務：跨日則重置為當天任務（由日期推導，載入不強制寫檔）
+ensureDaily(save);
 let cloudUser: User | null = null;
 let cloudModule: CloudModule | null = null;
 let cloudReady = false;
@@ -1132,6 +1136,7 @@ function startBattle(): void {
   // 排行榜：登入且雲端就緒時，向後端開一場 run session（供結算時提交防作弊）
   activeRunId = null;
   runWallStart = Date.now();
+  runUltCasts = 0;
   if (cloudReady && cloudUser && cloudModule) {
     const user = cloudUser;
     cloudModule
@@ -1148,6 +1153,8 @@ function startBattle(): void {
 // 排行榜提交用：本場的後端 run id 與真實開始時間（牆鐘）
 let activeRunId: string | null = null;
 let runWallStart = 0;
+// 每日任務用：本場終極武器施放次數
+let runUltCasts = 0;
 
 /** 數字滾動：dur 秒內從 0 補到 target */
 function rollNumber(el: HTMLElement, target: number, dur: number, prefix: string): void {
@@ -1168,6 +1175,10 @@ function showResults(s: SimState): void {
   const newCards = syncCardUnlocks(save);
   const newUlts = syncUltimateUnlocks(save);
   const newTier = settleTier(save, s.tier, s.wave);
+  // 每日任務進度
+  ensureDaily(save);
+  applyRunToMissions(save, { kills: s.kills, coins: s.coinsEarned, wave: s.wave, ults: runUltCasts });
+  updateDailyBadge();
   saveProgress();
   const unlockedLine = newCards.length
     ? `<div class="record">🃏 解鎖新卡片：${newCards.map((id) => cardById(id)?.name ?? id).join('、')}</div>`
@@ -1249,6 +1260,60 @@ boardModal.addEventListener('click', (e) => {
   if (e.target === boardModal) boardModal.classList.remove('active');
 });
 
+// ---------- 每日任務 ----------
+
+const dailyModal = $('#daily-modal');
+const dailyBtn = $('#daily-btn') as HTMLButtonElement;
+
+function updateDailyBadge(): void {
+  dailyBtn.classList.toggle('has-claim', claimableCount(save) > 0);
+}
+
+function renderDaily(): void {
+  ensureDaily(save);
+  const list = $('#daily-list');
+  list.innerHTML = '';
+  for (const m of save.dailyMissions) {
+    const def = missionById(m.id);
+    if (!def) continue;
+    const done = isMissionComplete(def, m.progress);
+    const pct = Math.min(100, Math.round((m.progress / def.target) * 100));
+    const row = document.createElement('div');
+    row.className = 'mission-row' + (done ? ' done' : '');
+    row.innerHTML = `
+      <div class="m-top"><span class="m-name"></span><span class="m-reward">🪙${formatNumber(def.reward)}</span></div>
+      <div class="m-desc"></div>
+      <div class="m-bar"><span style="width:${pct}%"></span></div>
+      <div class="m-foot">
+        <span class="m-prog">${formatNumber(Math.min(m.progress, def.target))} / ${formatNumber(def.target)}</span>
+        <button class="m-claim" ${done && !m.claimed ? '' : 'disabled'}>${m.claimed ? '已領取' : '領取'}</button>
+      </div>`;
+    (row.querySelector('.m-name') as HTMLElement).textContent = def.name;
+    (row.querySelector('.m-desc') as HTMLElement).textContent = def.desc;
+    (row.querySelector('.m-claim') as HTMLButtonElement).addEventListener('click', () => {
+      if (claimMission(save, m.id) > 0) {
+        Sound.play('buy');
+        saveProgress();
+        updateDailyBadge();
+        renderDaily();
+        if (!sim) refreshWorkshop();
+      }
+    });
+    list.appendChild(row);
+  }
+}
+
+dailyBtn.addEventListener('click', () => {
+  Sound.play('click');
+  renderDaily();
+  dailyModal.classList.add('active');
+});
+$('#daily-close').addEventListener('click', () => dailyModal.classList.remove('active'));
+dailyModal.addEventListener('click', (e) => {
+  if (e.target === dailyModal) dailyModal.classList.remove('active');
+});
+updateDailyBadge();
+
 // ---------- 主迴圈：固定 tick 模擬 + 每幀渲染 ----------
 
 let lastTime = performance.now();
@@ -1274,8 +1339,8 @@ function frame(now: number): void {
         else if (e.type === 'fire') Sound.play('fire');
         else if (e.type === 'hit') Sound.play(e.crit ? 'crit' : 'hit');
         else if (e.type === 'kill') Sound.play('kill');
-        else if (e.type === 'ultActivate') Sound.play('ult');
-        else if (e.type === 'ultNuke') Sound.play('nuke');
+        else if (e.type === 'ultActivate') { Sound.play('ult'); runUltCasts++; }
+        else if (e.type === 'ultNuke') { Sound.play('nuke'); runUltCasts++; }
       }
       accumulator -= TICK_DT;
     }

@@ -45,9 +45,14 @@
       }
       #auth-btn:disabled { opacity: 0.5; }
       #account-btn { border-color: #2b6cb0; }
-      #sound-btn, #board-btn { padding: 4px 7px; font-size: 13px; line-height: 1; }
+      #sound-btn, #board-btn, #daily-btn { padding: 4px 7px; font-size: 13px; line-height: 1; }
       #sound-btn.muted { opacity: 0.5; }
       #board-btn { border-color: #b8860b; }
+      #daily-btn { border-color: #2ea043; position: relative; }
+      #daily-btn.has-claim::after {
+        content: ''; position: absolute; top: -3px; right: -3px; width: 9px; height: 9px;
+        background: #f85149; border-radius: 50%; box-shadow: 0 0 6px #f85149;
+      }
 
       #topbar {
         display: flex; align-items: center; gap: 12px;
@@ -350,11 +355,30 @@
       }
 
       /* 帳戶面板（霓虹風，參考 The Tower） */
-      #account-modal, #board-modal {
+      #account-modal, #board-modal, #daily-modal {
         position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
         background: rgba(1, 4, 9, 0.82); z-index: 13; padding: 16px;
       }
-      #account-modal.active, #board-modal.active { display: flex; }
+      #account-modal.active, #board-modal.active, #daily-modal.active { display: flex; }
+      #daily-modal .account-card { max-width: 400px; width: 100%; }
+      .mission-row {
+        border: 1px solid var(--brd); border-radius: 10px; padding: 11px 12px; margin: 8px 0;
+        background: rgba(20,28,44,0.5);
+      }
+      .mission-row .m-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+      .mission-row .m-name { font-weight: 800; font-size: 14px; }
+      .mission-row .m-reward { font-family: var(--font-num); font-weight: 800; color: #ffcf4a; font-size: 13px; }
+      .mission-row .m-desc { font-size: 11px; color: #8b949e; margin: 2px 0 6px; }
+      .mission-row .m-bar { height: 7px; border-radius: 4px; background: #0d1117; overflow: hidden; }
+      .mission-row .m-bar > span { display: block; height: 100%; background: linear-gradient(90deg,#2ea043,#56d364); }
+      .mission-row .m-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+      .mission-row .m-prog { font-size: 11px; color: #8b949e; font-variant-numeric: tabular-nums; }
+      .mission-row .m-claim {
+        padding: 5px 12px; border-radius: 7px; font-size: 12px; font-weight: 800; cursor: pointer;
+        border: 1px solid #2ea043; background: #1a7f37; color: #fff;
+      }
+      .mission-row .m-claim:disabled { background: #21262d; border-color: #30363d; color: #6e7681; cursor: default; }
+      .mission-row.done { border-color: #2ea043; }
       #board-modal .account-card { max-width: 380px; width: 100%; }
       #board-list { max-height: 56vh; overflow-y: auto; margin: 8px 0; }
       .board-row {
@@ -559,7 +583,7 @@
   </head>
   <body>
     <div id="app">
-      <div id="authbar"><span id="auth-status">本機存檔</span><button id="sound-btn" type="button" title="音效開關">🔊</button><button id="board-btn" type="button" title="排行榜">🏆</button><button id="account-btn" type="button">帳戶</button><button id="auth-btn" type="button">Google 登入</button></div>
+      <div id="authbar"><span id="auth-status">本機存檔</span><button id="sound-btn" type="button" title="音效開關">🔊</button><button id="board-btn" type="button" title="排行榜">🏆</button><button id="daily-btn" type="button" title="每日任務">📋</button><button id="account-btn" type="button">帳戶</button><button id="auth-btn" type="button">Google 登入</button></div>
       <header id="topbar"></header>
 
       <div id="workshop-screen" class="screen active">
@@ -674,6 +698,15 @@
           <div class="account-linked-label" id="board-sub">最高波次</div>
           <div id="board-list"></div>
           <button id="board-close" type="button">關閉</button>
+        </div>
+      </div>
+
+      <div id="daily-modal">
+        <div class="account-card">
+          <h2>📋 每日任務</h2>
+          <div class="account-linked-label">每天重置 · 完成領金幣</div>
+          <div id="daily-list"></div>
+          <button id="daily-close" type="button">關閉</button>
         </div>
       </div>
     </div>

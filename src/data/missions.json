@@ -1,0 +1,13 @@
+{
+  "config": { "perDay": 3 },
+  "pool": [
+    { "id": "kills_s", "type": "kills", "target": 150, "reward": 250, "name": "殲滅者", "desc": "今日累計擊殺 150 名敵人" },
+    { "id": "kills_l", "type": "kills", "target": 500, "reward": 600, "name": "清場專家", "desc": "今日累計擊殺 500 名敵人" },
+    { "id": "wave_s", "type": "wave", "target": 15, "reward": 300, "name": "穩守", "desc": "單場到達第 15 波" },
+    { "id": "wave_l", "type": "wave", "target": 25, "reward": 700, "name": "深入", "desc": "單場到達第 25 波" },
+    { "id": "coins_s", "type": "coins", "target": 1500, "reward": 350, "name": "淘金", "desc": "今日累計賺取 1500 金幣" },
+    { "id": "coins_l", "type": "coins", "target": 5000, "reward": 800, "name": "富甲一方", "desc": "今日累計賺取 5000 金幣" },
+    { "id": "runs", "type": "runs", "target": 3, "reward": 200, "name": "勤練", "desc": "今日打滿 3 場" },
+    { "id": "ults", "type": "ults", "target": 5, "reward": 350, "name": "大招連發", "desc": "今日施放終極武器 5 次" }
+  ]
+}
