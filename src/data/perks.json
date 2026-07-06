@@ -20,6 +20,12 @@
     {
       "id": "greedPact", "name": "貪婪契約", "desc": "金幣獲取 +60%，但傷害 -20%", "risky": true,
       "mods": [{ "stat": "coinBonus", "mult": 1.6 }, { "stat": "damage", "mult": 0.8 }]
-    }
+    },
+    { "id": "incendiary", "name": "燃燒彈頭", "desc": "命中附加 3 秒燃燒，可疊 5 層", "rule": "burn", "mods": [] },
+    { "id": "volatileFuel", "name": "揮發燃料", "desc": "爆擊會強化燃燒傷害並追加 2 層", "rule": "burnCrit", "prerequisite": "incendiary", "mods": [] },
+    { "id": "wildfire", "name": "野火蔓延", "desc": "燃燒敵人死亡時，將燃燒傳給附近 3 名敵人", "rule": "wildfire", "prerequisite": "incendiary", "mods": [] },
+    { "id": "cryoRounds", "name": "低溫彈藥", "desc": "命中疊加冰霜；3 層凍結敵人 1.2 秒", "rule": "frost", "mods": [] },
+    { "id": "brittle", "name": "脆化裝甲", "desc": "凍結中的敵人承受傷害 +50%", "rule": "brittle", "prerequisite": "cryoRounds", "mods": [] },
+    { "id": "shatter", "name": "碎冰衝擊", "desc": "凍結敵人死亡時，對附近敵人造成 80% 塔傷", "rule": "shatter", "prerequisite": "cryoRounds", "mods": [] }
   ]
 }

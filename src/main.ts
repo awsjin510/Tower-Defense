@@ -696,10 +696,10 @@ function showWaveBanner(wave: number, boss: boolean): void {
   if (boss) {
     banner.textContent = `⚠ 頭目來襲 · Wave ${wave}`;
     banner.className = 'show boss';
-  } else if (isZoneEntryWave(wave) && wave > 1) {
+  } else if (isZoneEntryWave(wave)) {
     // 跨入新戰區：以戰區主題色宣告
     const zone = zoneForWave(wave);
-    banner.textContent = `🌐 進入 ${zone.name} · Wave ${wave}`;
+    banner.textContent = `🌐 ${zone.name}｜${zone.mechanic.name}：${zone.mechanic.desc}`;
     banner.className = 'show';
     banner.style.background = zone.accent;
     banner.style.boxShadow = `0 4px 22px ${zone.accent}`;
@@ -707,7 +707,7 @@ function showWaveBanner(wave: number, boss: boolean): void {
     banner.textContent = `Wave ${wave}`;
     banner.className = 'show';
   }
-  bannerTimer = boss ? 2.4 : isZoneEntryWave(wave) && wave > 1 ? 2.2 : 1.6;
+  bannerTimer = boss ? 2.4 : isZoneEntryWave(wave) ? 4.2 : 1.6;
 }
 
 // ---------- Perk 三選一（模擬已在 core 暫停，選完才恢復） ----------
@@ -1036,6 +1036,7 @@ function startBattle(): void {
   buildTabs();
   buildBattleGrid();
   buildUltBar();
+  showWaveBanner(1, false);
 }
 
 /** 數字滾動：dur 秒內從 0 補到 target */

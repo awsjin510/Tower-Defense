@@ -88,6 +88,17 @@ export interface Enemy {
   /** 召喚間隔（0 = 無此能力）與倒數 */
   summonEvery: number;
   summonTimer: number;
+  /** 燃燒：每秒傷害、剩餘時間與層數 */
+  burnDps: number;
+  burnTime: number;
+  burnStacks: number;
+  /** 冰霜：累積層數，達門檻後凍結 */
+  frostStacks: number;
+  frozenTime: number;
+  /** 戰區能力用狀態 */
+  zoneTimer: number;
+  zoneEmpower: number;
+  canSplit: boolean;
 }
 
 export interface Bullet {
@@ -114,4 +125,6 @@ export type SimEvent =
   | { type: 'perkOffer'; wave: number; choices: string[] }
   | { type: 'ultNuke'; color: string }
   | { type: 'ultActivate'; id: string; color: string }
-  | { type: 'chain'; x1: number; y1: number; x2: number; y2: number; crit: boolean };
+  | { type: 'chain'; x1: number; y1: number; x2: number; y2: number; crit: boolean }
+  | { type: 'status'; id: number; x: number; y: number; status: 'burn' | 'frost' | 'freeze' | 'empower' }
+  | { type: 'zonePulse'; zoneId: string; color: string };

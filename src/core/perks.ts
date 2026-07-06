@@ -16,6 +16,13 @@ export interface PerkDef {
   /** 高風險 Perk：帶有負面代價，UI 以警示色呈現 */
   risky?: boolean;
   mods: PerkMod[];
+  /** 改變戰鬥規則的效果；實際參數集中在模擬層，存檔只需保留 perk id */
+  rule?: 'burn' | 'burnCrit' | 'wildfire' | 'frost' | 'brittle' | 'shatter';
+  prerequisite?: string;
+}
+
+export function hasPerk(perkIds: string[], id: string): boolean {
+  return perkIds.includes(id);
 }
 
 export const PERKS = perksData.perks as PerkDef[];
@@ -46,7 +53,9 @@ export function isPerkWave(wave: number): boolean {
 /** 擲出三選一：從尚未取得的 Perk 池抽（不重複），池不足時給剩餘全部。
  * count 可由卡片（策士）加成，預設為設定值。 */
 export function rollPerkChoices(taken: string[], rng: () => number, count = PERK_CONFIG.choices): string[] {
-  const pool = PERKS.filter((p) => !taken.includes(p.id)).map((p) => p.id);
+  const pool = PERKS
+    .filter((p) => !taken.includes(p.id) && (!p.prerequisite || taken.includes(p.prerequisite)))
+    .map((p) => p.id);
   const picks: string[] = [];
   while (picks.length < count && pool.length > 0) {
     picks.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);

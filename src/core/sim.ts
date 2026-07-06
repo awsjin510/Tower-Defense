@@ -1,7 +1,7 @@
 import type { Bullet, Enemy, SimEvent, Stats } from './types';
 import { computeStats, IN_RUN_UPGRADES, type Levels } from './stats';
 import { upgradeCost, isMaxed } from './economy';
-import { applyPerks, isPerkWave, PERK_CONFIG, rollPerkChoices } from './perks';
+import { applyPerks, hasPerk, isPerkWave, PERK_CONFIG, rollPerkChoices } from './perks';
 import { applyCardStatMods, emptyMods, type RunMods } from './cards';
 import type { ResolvedUltimate } from './ultimates';
 import { mulberry32 } from './rng';
@@ -59,6 +59,9 @@ export interface SimState {
   ultCooldowns: Record<string, number>;
   /** 進行中的限時終極效果（黃金塔） */
   ultActive: Array<{ id: string; remaining: number; coinMult: number }>;
+  /** 戰區機制共用計量：寒冰侵蝕程度、週期能力倒數 */
+  zoneMeter: number;
+  zonePulseTimer: number;
   /** 本 tick 的視覺事件；step() 開頭清空，故 headless 模擬不會無限成長 */
   events: SimEvent[];
 }
@@ -101,6 +104,8 @@ export function newRun(
     ultimates,
     ultCooldowns: Object.fromEntries(ultimates.map((u) => [u.id, 0])),
     ultActive: [],
+    zoneMeter: 0,
+    zonePulseTimer: zoneForWave(1).mechanic.interval ?? 0,
     events: [],
   };
 }
@@ -159,6 +164,14 @@ function makeEnemy(s: SimState, typeId: string, x?: number, y?: number): Enemy {
     attackRange: def.attackRange ?? 0,
     summonEvery: def.summonEvery ?? 0,
     summonTimer: def.summonEvery ?? 0,
+    burnDps: 0,
+    burnTime: 0,
+    burnStacks: 0,
+    frostStacks: 0,
+    frozenTime: 0,
+    zoneTimer: zoneForWave(s.wave).mechanic.interval ?? 0,
+    zoneEmpower: 1,
+    canSplit: true,
   };
 }
 
@@ -171,6 +184,8 @@ function killEnemy(s: SimState, e: Enemy): void {
   s.cash += e.cashValue * s.stats.cashPerKill * coinMult;
   s.coinsEarned += e.coinValue * s.stats.coinBonus * coinMult;
   s.kills++;
+  const zone = zoneForWave(s.wave);
+  if (zone.mechanic.kind === 'frost') s.zoneMeter = Math.max(0, s.zoneMeter - 0.055);
   // 吸血卡：擊殺回復血量上限的比例
   if (s.mods.lifestealFrac > 0) {
     s.towerHp = Math.min(s.towerHp + s.mods.lifestealFrac * s.stats.maxHealth, s.stats.maxHealth);
@@ -178,6 +193,73 @@ function killEnemy(s: SimState, e: Enemy): void {
   s.events.push({ type: 'kill', x: e.x, y: e.y, typeId: e.typeId });
   const i = s.enemies.indexOf(e);
   if (i >= 0) s.enemies.splice(i, 1);
+
+  // 燃燒流：死亡時把現有燃燒傳給附近三名敵人。
+  if (hasPerk(s.perks, 'wildfire') && e.burnTime > 0) {
+    const nearby = nearestEnemies(s, e.x, e.y, 3, e.id);
+    for (const n of nearby) applyBurn(s, n, Math.max(e.burnDps * 0.7, s.stats.damage * 0.12), Math.max(1, e.burnStacks - 1));
+  }
+  // 冰凍流：凍結中的敵人死亡會引發碎冰範圍傷害。
+  if (hasPerk(s.perks, 'shatter') && e.frozenTime > 0) {
+    for (const n of nearestEnemies(s, e.x, e.y, 4, e.id).filter((n) => Math.hypot(n.x - e.x, n.y - e.y) <= 100)) {
+      const dmg = s.stats.damage * 0.8;
+      n.hp -= dmg;
+      s.events.push({ type: 'hit', id: n.id, x: n.x, y: n.y, dmg, crit: false });
+      if (n.hp <= 0) killEnemy(s, n);
+    }
+  }
+  // 戰區規則：翠綠分裂、虛空死亡強化附近同伴。
+  if (zone.mechanic.kind === 'split' && s.wave >= 6 && e.canSplit && e.typeId !== 'boss' && s.rng() < zone.mechanic.value) {
+    for (const side of [-1, 1]) {
+      const child = makeEnemy(s, 'fast', e.x + side * 8, e.y - side * 8);
+      child.hp *= 0.18;
+      child.maxHp = child.hp;
+      child.radius *= 0.72;
+      child.dmg *= 0.25;
+      child.cashValue *= 0.25;
+      child.coinValue *= 0.25;
+      child.canSplit = false;
+      s.enemies.push(child);
+    }
+    s.events.push({ type: 'summon', x: e.x, y: e.y });
+  } else if (zone.mechanic.kind === 'void') {
+    for (const n of nearestEnemies(s, e.x, e.y, 3, e.id).filter((n) => Math.hypot(n.x - e.x, n.y - e.y) <= 120)) {
+      n.zoneEmpower *= 1 + zone.mechanic.value;
+      n.speed *= 1 + zone.mechanic.value * 0.5;
+      n.dmg *= 1 + zone.mechanic.value;
+      s.events.push({ type: 'status', id: n.id, x: n.x, y: n.y, status: 'empower' });
+    }
+  }
+}
+
+function nearestEnemies(s: SimState, x: number, y: number, count: number, excludeId = -1): Enemy[] {
+  return s.enemies
+    .filter((n) => n.id !== excludeId)
+    .map((n) => ({ n, d: (n.x - x) ** 2 + (n.y - y) ** 2 }))
+    .sort((a, b) => a.d - b.d || a.n.id - b.n.id)
+    .slice(0, count)
+    .map(({ n }) => n);
+}
+
+function applyBurn(s: SimState, e: Enemy, dps: number, stacks = 1): void {
+  const wasBurning = e.burnTime > 0;
+  const add = Math.min(stacks, 5 - e.burnStacks);
+  if (add <= 0) return;
+  e.burnStacks += add;
+  e.burnDps += dps * add;
+  e.burnTime = 3;
+  if (!wasBurning) s.events.push({ type: 'status', id: e.id, x: e.x, y: e.y, status: 'burn' });
+}
+
+function applyFrost(s: SimState, e: Enemy): void {
+  e.frostStacks++;
+  if (e.frostStacks >= 3) {
+    e.frostStacks = 0;
+    e.frozenTime = 1.2;
+    s.events.push({ type: 'status', id: e.id, x: e.x, y: e.y, status: 'freeze' });
+  } else if (e.frostStacks === 1) {
+    s.events.push({ type: 'status', id: e.id, x: e.x, y: e.y, status: 'frost' });
+  }
 }
 
 function startNextWave(s: SimState): void {
@@ -188,6 +270,10 @@ function startNextWave(s: SimState): void {
   }
   s.coinsEarned += waveCoinBonus(s.wave) * s.stats.coinBonus * coinMultiplier(s);
   s.wave++;
+  if (isZoneEntryWaveCompat(s.wave)) {
+    s.zoneMeter = 0;
+    s.zonePulseTimer = zoneForWave(s.wave).mechanic.interval ?? 0;
+  }
   s.spawnList = waveComposition(s.wave, s.rng);
   s.spawnIdx = 0;
   s.spawnTimer = 0;
@@ -199,6 +285,10 @@ function startNextWave(s: SimState): void {
       s.events.push({ type: 'perkOffer', wave: s.wave, choices });
     }
   }
+}
+
+function isZoneEntryWaveCompat(wave: number): boolean {
+  return zoneForWave(wave).id !== zoneForWave(Math.max(1, wave - 1)).id;
 }
 
 /** 屬性重算（升級/Perk 後呼叫）：血量上限提高時補差額，降低時夾回上限 */
@@ -230,6 +320,32 @@ export function step(s: SimState, dt: number): void {
 
   s.towerHp = Math.min(s.towerHp + s.stats.healthRegen * dt, s.stats.maxHealth);
 
+  const zone = zoneForWave(s.wave);
+  if (zone.mechanic.kind === 'frost') s.zoneMeter = Math.min(zone.mechanic.value, s.zoneMeter + dt * 0.006);
+  if (zone.mechanic.kind === 'magma') {
+    s.zonePulseTimer -= dt;
+    if (s.zonePulseTimer <= 0) {
+      s.zonePulseTimer += zone.mechanic.interval ?? 8;
+      const towerDmg = s.stats.maxHealth * zone.mechanic.value;
+      s.towerHp -= towerDmg;
+      s.events.push({ type: 'towerHit', dmg: towerDmg });
+      s.events.push({ type: 'zonePulse', zoneId: zone.id, color: zone.accent });
+      for (const e of [...s.enemies]) applyBurn(s, e, s.stats.damage * 0.16, 1);
+    }
+  }
+
+  // 持續狀態傷害與凍結倒數。
+  for (const e of [...s.enemies]) {
+    if (e.burnTime > 0) {
+      const burn = e.burnDps * dt;
+      e.hp -= burn;
+      e.burnTime -= dt;
+      if (e.burnTime <= 0) { e.burnDps = 0; e.burnStacks = 0; }
+      if (e.hp <= 0) killEnemy(s, e);
+    }
+    if (e.frozenTime > 0) e.frozenTime = Math.max(0, e.frozenTime - dt);
+  }
+
   // 波次與生成
   if (s.interWaveTimer > 0) {
     s.interWaveTimer -= dt;
@@ -253,7 +369,9 @@ export function step(s: SimState, dt: number): void {
     if (dist > standoff) {
       // 慢速靈氣卡：射程內的敵人減速
       const slow = s.mods.slowAura > 0 && dist <= s.stats.range ? 1 - s.mods.slowAura : 1;
-      const move = Math.min(e.speed * slow * dt, dist - standoff);
+      const frostSlow = e.frostStacks > 0 ? Math.max(0.55, 1 - e.frostStacks * 0.12) : 1;
+      const frozen = e.frozenTime > 0 ? 0 : 1;
+      const move = Math.min(e.speed * slow * frostSlow * frozen * dt, dist - standoff);
       e.x -= (e.x / dist) * move;
       e.y -= (e.y / dist) * move;
       e.attackTimer = 0;
@@ -270,6 +388,17 @@ export function step(s: SimState, dt: number): void {
           if (e.hp <= 0) killEnemy(s, e);
         }
         e.attackTimer += ENEMY_ATTACK_INTERVAL;
+      }
+    }
+    if (zone.mechanic.kind === 'void') {
+      e.zoneTimer -= dt;
+      if (e.zoneTimer <= 0) {
+        e.zoneTimer += zone.mechanic.interval ?? 4;
+        const d = Math.hypot(e.x, e.y) || 1;
+        const blink = Math.min(34, Math.max(0, d - standoff));
+        e.x -= (e.x / d) * blink;
+        e.y -= (e.y / d) * blink;
+        s.events.push({ type: 'status', id: e.id, x: e.x, y: e.y, status: 'empower' });
       }
     }
     // Boss 召喚：在自己腳下叫出小兵
@@ -291,7 +420,7 @@ export function step(s: SimState, dt: number): void {
   s.enemies.push(...summoned);
 
   // 塔索敵開火（用距離平方比較，冷卻可在單 tick 內多次觸發以支援高攻速）
-  const cooldown = 1 / s.stats.attackSpeed;
+  const cooldown = 1 / (s.stats.attackSpeed * (1 - s.zoneMeter));
   s.attackTimer -= dt;
   while (s.attackTimer <= 0) {
     const rangeSq = s.stats.range * s.stats.range;
@@ -336,10 +465,17 @@ export function step(s: SimState, dt: number): void {
     if (dist <= travel + target.radius) {
       // 命中傷害套用條件卡：頭目剋星、戰區傷害
       let dmg = b.dmg;
+      if (target.frozenTime > 0 && hasPerk(s.perks, 'brittle')) dmg *= 1.5;
       if (target.typeId === 'boss' && s.mods.bossDamageMult > 1) dmg *= s.mods.bossDamageMult;
       const zoneBonus = s.mods.zoneDamage[zoneForWave(s.wave).id] ?? 0;
       if (zoneBonus > 0) dmg *= 1 + zoneBonus;
       target.hp -= dmg;
+      if (hasPerk(s.perks, 'incendiary')) {
+        const stacks = b.crit && hasPerk(s.perks, 'volatileFuel') ? 2 : 1;
+        const burnDps = dmg * 0.18 * (hasPerk(s.perks, 'volatileFuel') && b.crit ? s.stats.critFactor : 1);
+        applyBurn(s, target, burnDps, stacks);
+      }
+      if (hasPerk(s.perks, 'cryoRounds')) applyFrost(s, target);
       s.events.push({ type: 'hit', id: target.id, x: target.x, y: target.y, dmg, crit: b.crit });
       s.bullets.splice(i, 1);
       const hx = target.x;
