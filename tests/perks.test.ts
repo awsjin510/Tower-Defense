@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { newRun, step, choosePerk, TICK_DT, type SimState } from '../src/core/sim';
-import { applyPerks, isPerkWave, perkById, perkRarity, perkSchool, rollPerkChoices, PERKS, PERK_CONFIG } from '../src/core/perks';
+import { newRun, step, choosePerk, rerollPerks, skipPerks, currentRerollCost, TICK_DT, type SimState } from '../src/core/sim';
+import { applyPerks, isPerkWave, perkById, perkRarity, perkSchool, perkStacks, rerollCost, rollPerkChoices, PERKS, PERK_CONFIG } from '../src/core/perks';
 import { BASE_STATS } from '../src/core/stats';
 import { mulberry32 } from '../src/core/rng';
 
@@ -31,16 +31,69 @@ describe('perks', () => {
     expect(isPerkWave(PERK_CONFIG.offerEvery + 1)).toBe(false);
   });
 
-  it('rollPerkChoices 不重複、排除已取得、池不足時給剩餘全部', () => {
+  it('rollPerkChoices 同一次不重複、非疊加已取得會排除', () => {
     const rng = mulberry32(7);
     const picks = rollPerkChoices([], rng);
     expect(picks.length).toBe(PERK_CONFIG.choices);
     expect(new Set(picks).size).toBe(picks.length);
 
-    const almostAll = PERKS.slice(0, PERKS.length - 1).map((p) => p.id);
-    const rest = rollPerkChoices(almostAll, rng);
-    expect(rest).toEqual([PERKS[PERKS.length - 1].id]);
-    expect(rollPerkChoices(PERKS.map((p) => p.id), rng)).toEqual([]);
+    // 非疊加 Perk 取得後不再出現；把所有非疊加的都拿走，只剩疊加型可抽
+    const nonStack = PERKS.filter((p) => !p.stackable).map((p) => p.id);
+    const rest = rollPerkChoices(nonStack, mulberry32(3), 99);
+    expect(rest.every((id) => perkById(id)!.stackable)).toBe(true);
+    for (const id of nonStack) expect(rest).not.toContain(id);
+  });
+
+  it('可疊加 Perk 未達上限仍在池中、達上限後排除', () => {
+    const sharp = perkById('sharp')!;
+    const max = sharp.maxStacks!;
+    // 已疊到上限：不再出現
+    const taken = Array(max).fill('sharp');
+    const rolled = rollPerkChoices(taken, mulberry32(5), 99);
+    expect(rolled).not.toContain('sharp');
+    // 未達上限：仍可能出現
+    const partial = rollPerkChoices(['sharp'], mulberry32(5), 99);
+    expect(partial).toContain('sharp');
+  });
+
+  it('稀有度加權：深波抽到高稀有度的比例明顯上升', () => {
+    const countLegend = (wave: number) => {
+      let n = 0;
+      for (let seed = 0; seed < 400; seed++) {
+        const picks = rollPerkChoices([], mulberry32(seed), 1, wave);
+        if (picks[0] && perkById(picks[0])!.rarity !== 'common') n++;
+      }
+      return n;
+    };
+    expect(countLegend(50)).toBeGreaterThan(countLegend(5));
+  });
+
+  it('重骰花費隨次數指數上升、跳過給現金並結束選擇', () => {
+    expect(rerollCost(1)).toBeGreaterThan(rerollCost(0));
+    const s = newRun({}, 9);
+    s.pendingPerks = ['sharp', 'rapid', 'fortify'];
+    s.cash = 100000;
+    const cost0 = currentRerollCost(s);
+    expect(rerollPerks(s)).toBe(true);
+    expect(s.pendingPerks!.length).toBe(PERK_CONFIG.choices);
+    expect(currentRerollCost(s)).toBeGreaterThan(cost0);
+    // 跳過：領到現金、pendingPerks 清空
+    const cashBefore = s.cash;
+    const reward = skipPerks(s);
+    expect(reward).toBeGreaterThan(0);
+    expect(s.cash).toBe(cashBefore + reward);
+    expect(s.pendingPerks).toBeNull();
+  });
+
+  it('perkStacks 正確計算層數；choosePerk 允許疊加', () => {
+    const s = newRun({}, 2);
+    s.pendingPerks = ['sharp'];
+    choosePerk(s, 'sharp');
+    s.pendingPerks = ['sharp'];
+    choosePerk(s, 'sharp');
+    expect(perkStacks(s.perks, 'sharp')).toBe(2);
+    // 疊加後傷害倍率為 1.3^2
+    expect(s.stats.damage).toBeCloseTo(newRun({}, 2).stats.damage * 1.3 * 1.3);
   });
 
   it('流派進階 Perk 只在取得前置核心後進入選池', () => {

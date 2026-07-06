@@ -566,7 +566,27 @@
       .perk-link { grid-area:link; color:#9bb3ce; font-size:10px; }
       .perk-card.school-fire { --perk-color:#ff7a3d; } .perk-card.school-frost { --perk-color:#72d8ff; }
       .perk-card.school-risk { --perk-color:#ff6868; } .perk-card.school-stat { --perk-color:#8cb8ff; }
+      .perk-card.school-trigger { --perk-color:#b98cff; }
       .perk-card.risky .perk-name::after { content:" 高風險"; }
+
+      /* 稀有度：邊框輝光層級 + 稀有度標籤底色，傳說有金色流光 */
+      .perk-card { border-color: var(--rar-line, rgba(255,255,255,.14)); }
+      .perk-card .perk-rarity { background: color-mix(in srgb, var(--rar-glow,#7a8699) 22%, transparent); color: var(--rar-glow,#9bb3ce); padding:2px 7px; border-radius:999px; }
+      .perk-card.rar-common { --rar-glow:#93a3b8; --rar-line:rgba(147,163,184,.35); }
+      .perk-card.rar-rare { --rar-glow:#4aa3ff; --rar-line:rgba(74,163,255,.55); box-shadow:0 0 0 1px rgba(74,163,255,.25), 0 6px 22px rgba(74,163,255,.12); }
+      .perk-card.rar-epic { --rar-glow:#c07dff; --rar-line:rgba(192,125,255,.6); box-shadow:0 0 0 1px rgba(192,125,255,.32), 0 6px 26px rgba(192,125,255,.18); }
+      .perk-card.rar-legendary { --rar-glow:#ffcf4a; --rar-line:rgba(255,207,74,.7); box-shadow:0 0 0 1px rgba(255,207,74,.4), 0 8px 30px rgba(255,207,74,.24); }
+      .perk-card.rar-legendary::after { content:''; position:absolute; inset:0; pointer-events:none; background:linear-gradient(115deg, transparent 30%, rgba(255,225,140,.22) 47%, rgba(255,255,255,.35) 50%, rgba(255,225,140,.22) 53%, transparent 70%); background-size:250% 100%; animation:legendShimmer 2.6s linear infinite; }
+      @keyframes legendShimmer { 0%{background-position:120% 0} 100%{background-position:-120% 0} }
+      .perk-stack { position:absolute; top:8px; right:8px; font-size:9px; font-weight:900; letter-spacing:.5px; color:#0c1016; background:var(--rar-glow,#9bb3ce); padding:2px 6px; border-radius:999px; }
+
+      #perk-actions { display:flex; gap:10px; margin-top:12px; }
+      .perk-action { flex:1; padding:11px 8px; border-radius:12px; font-weight:800; font-size:13px; cursor:pointer; border:1px solid rgba(120,150,200,.35); background:linear-gradient(180deg, rgba(74,163,255,.16), rgba(74,163,255,.06)); color:#cfe2ff; display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+      .perk-action .ui-icon { width:15px; height:15px; }
+      .perk-action:hover:not(:disabled) { filter:brightness(1.15); }
+      .perk-action:active:not(:disabled) { transform:scale(.97); }
+      .perk-action:disabled { opacity:.4; cursor:not-allowed; }
+      .perk-action.ghost { background:rgba(255,255,255,.04); color:#9bb3ce; }
 
       @media (max-width: 480px) {
         #topbar.battle-hud { display:grid; grid-template-columns:.7fr 1.25fr 1fr 1fr auto; }
@@ -670,6 +690,10 @@
           <h2>⭐ 選擇一項強化</h2>
           <div class="sub" id="perk-sub"></div>
           <div id="perk-cards"></div>
+          <div id="perk-actions">
+            <button id="perk-reroll" class="perk-action">重骰</button>
+            <button id="perk-skip" class="perk-action ghost">跳過領錢</button>
+          </div>
         </div>
       </div>
 

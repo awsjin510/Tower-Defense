@@ -1,31 +1,52 @@
 {
-  "config": { "offerEvery": 5, "choices": 3 },
+  "config": {
+    "offerEvery": 5,
+    "choices": 3,
+    "rerollBaseCost": 40,
+    "rerollGrowth": 1.8,
+    "skipRewardFrac": 0.12,
+    "rarityWeights": {
+      "common": { "base": 100, "wavePer10": -6 },
+      "rare": { "base": 46, "wavePer10": 2 },
+      "epic": { "base": 15, "wavePer10": 4 },
+      "legendary": { "base": 3, "wavePer10": 2 }
+    }
+  },
   "perks": [
-    { "id": "sharp", "name": "銳利彈頭", "desc": "傷害 +30%", "mods": [{ "stat": "damage", "mult": 1.3 }] },
-    { "id": "rapid", "name": "急速裝填", "desc": "攻擊速度 +25%", "mods": [{ "stat": "attackSpeed", "mult": 1.25 }] },
-    { "id": "longbarrel", "name": "加長砲管", "desc": "射程 +18%", "mods": [{ "stat": "range", "mult": 1.18 }] },
-    { "id": "deadeye", "name": "神射手", "desc": "暴擊率 +10%、暴擊倍率 +15%", "mods": [{ "stat": "critChance", "add": 0.1 }, { "stat": "critFactor", "mult": 1.15 }] },
-    { "id": "fortify", "name": "強化裝甲", "desc": "血量上限 +35%", "mods": [{ "stat": "maxHealth", "mult": 1.35 }] },
-    { "id": "nanorepair", "name": "奈米修復", "desc": "回血速度 +60%", "mods": [{ "stat": "healthRegen", "mult": 1.6 }] },
-    { "id": "bounty", "name": "賞金獵人", "desc": "每殺金額 +30%", "mods": [{ "stat": "cashPerKill", "mult": 1.3 }] },
-    { "id": "goldrush", "name": "淘金熱", "desc": "金幣獲取 +25%", "mods": [{ "stat": "coinBonus", "mult": 1.25 }] },
-    {
-      "id": "glassCannon", "name": "玻璃大砲", "desc": "傷害 +80%，但血量上限 -35%", "risky": true,
-      "mods": [{ "stat": "damage", "mult": 1.8 }, { "stat": "maxHealth", "mult": 0.65 }]
-    },
-    {
-      "id": "overclock", "name": "危險超頻", "desc": "攻擊速度 +60%，但回血 -50%", "risky": true,
-      "mods": [{ "stat": "attackSpeed", "mult": 1.6 }, { "stat": "healthRegen", "mult": 0.5 }]
-    },
-    {
-      "id": "greedPact", "name": "貪婪契約", "desc": "金幣獲取 +60%，但傷害 -20%", "risky": true,
-      "mods": [{ "stat": "coinBonus", "mult": 1.6 }, { "stat": "damage", "mult": 0.8 }]
-    },
-    { "id": "incendiary", "name": "燃燒彈頭", "desc": "命中附加 3 秒燃燒，可疊 5 層", "rule": "burn", "mods": [] },
-    { "id": "volatileFuel", "name": "揮發燃料", "desc": "爆擊會強化燃燒傷害並追加 2 層", "rule": "burnCrit", "prerequisite": "incendiary", "mods": [] },
-    { "id": "wildfire", "name": "野火蔓延", "desc": "燃燒敵人死亡時，將燃燒傳給附近 3 名敵人", "rule": "wildfire", "prerequisite": "incendiary", "mods": [] },
-    { "id": "cryoRounds", "name": "低溫彈藥", "desc": "命中疊加冰霜；3 層凍結敵人 1.2 秒", "rule": "frost", "mods": [] },
-    { "id": "brittle", "name": "脆化裝甲", "desc": "凍結中的敵人承受傷害 +50%", "rule": "brittle", "prerequisite": "cryoRounds", "mods": [] },
-    { "id": "shatter", "name": "碎冰衝擊", "desc": "凍結敵人死亡時，對附近敵人造成 80% 塔傷", "rule": "shatter", "prerequisite": "cryoRounds", "mods": [] }
+    { "id": "sharp", "name": "銳利彈頭", "desc": "傷害 +30%", "rarity": "common", "stackable": true, "maxStacks": 6, "mods": [{ "stat": "damage", "mult": 1.3 }] },
+    { "id": "rapid", "name": "急速裝填", "desc": "攻擊速度 +25%", "rarity": "common", "stackable": true, "maxStacks": 6, "mods": [{ "stat": "attackSpeed", "mult": 1.25 }] },
+    { "id": "longbarrel", "name": "加長砲管", "desc": "射程 +18%", "rarity": "common", "stackable": true, "maxStacks": 4, "mods": [{ "stat": "range", "mult": 1.18 }] },
+    { "id": "fortify", "name": "強化裝甲", "desc": "血量上限 +35%", "rarity": "common", "stackable": true, "maxStacks": 6, "mods": [{ "stat": "maxHealth", "mult": 1.35 }] },
+    { "id": "nanorepair", "name": "奈米修復", "desc": "回血速度 +60%", "rarity": "common", "stackable": true, "maxStacks": 5, "mods": [{ "stat": "healthRegen", "mult": 1.6 }] },
+    { "id": "bounty", "name": "賞金獵人", "desc": "每殺金額 +30%", "rarity": "common", "stackable": true, "maxStacks": 5, "mods": [{ "stat": "cashPerKill", "mult": 1.3 }] },
+    { "id": "deadeye", "name": "神射手", "desc": "暴擊率 +10%、暴擊倍率 +15%", "rarity": "rare", "stackable": true, "maxStacks": 4, "mods": [{ "stat": "critChance", "add": 0.1 }, { "stat": "critFactor", "mult": 1.15 }] },
+    { "id": "goldrush", "name": "淘金熱", "desc": "金幣獲取 +25%", "rarity": "rare", "stackable": true, "maxStacks": 4, "mods": [{ "stat": "coinBonus", "mult": 1.25 }] },
+
+    { "id": "armorBreak", "name": "破甲彈", "desc": "對滿血敵人傷害 +45%", "rarity": "common", "rule": "armorBreak", "mods": [] },
+    { "id": "bountyBurst", "name": "賞金爆裂", "desc": "擊殺有 12% 機率額外掉落 3 倍賞金", "rarity": "common", "rule": "bountyBurst", "mods": [] },
+    { "id": "giantSlayer", "name": "巨獸殺手", "desc": "對頭目與召喚頭目傷害 +50%", "rarity": "common", "rule": "giantSlayer", "mods": [] },
+
+    { "id": "execute", "name": "處決者", "desc": "敵人血量低於 12% 時直接處決（頭目 4%）", "rarity": "rare", "rule": "execute", "mods": [] },
+    { "id": "precision", "name": "精準節拍", "desc": "每第 4 發必定暴擊", "rarity": "rare", "rule": "precision", "mods": [] },
+    { "id": "adrenaline", "name": "腎上腺素", "desc": "塔血量低於 30% 時全體傷害 +55%", "rarity": "rare", "rule": "adrenaline", "mods": [] },
+    { "id": "doubleTap", "name": "雙重射擊", "desc": "每次開火有 14% 機率立刻追加一發", "rarity": "rare", "rule": "doubleTap", "mods": [] },
+    { "id": "momentum", "name": "殺意連鎖", "desc": "每次擊殺攻速 +3%（最多 +36%），2 秒未擊殺重置", "rarity": "rare", "rule": "momentum", "mods": [] },
+
+    { "id": "glassCannon", "name": "玻璃大砲", "desc": "傷害 +80%，但血量上限 -35%", "rarity": "rare", "risky": true, "mods": [{ "stat": "damage", "mult": 1.8 }, { "stat": "maxHealth", "mult": 0.65 }] },
+    { "id": "overclock", "name": "危險超頻", "desc": "攻擊速度 +60%，但回血 -50%", "rarity": "rare", "risky": true, "mods": [{ "stat": "attackSpeed", "mult": 1.6 }, { "stat": "healthRegen", "mult": 0.5 }] },
+    { "id": "greedPact", "name": "貪婪契約", "desc": "金幣獲取 +60%，但傷害 -20%", "rarity": "rare", "risky": true, "mods": [{ "stat": "coinBonus", "mult": 1.6 }, { "stat": "damage", "mult": 0.8 }] },
+
+    { "id": "incendiary", "name": "燃燒彈頭", "desc": "命中附加 3 秒燃燒，可疊 5 層", "rarity": "epic", "rule": "burn", "mods": [] },
+    { "id": "volatileFuel", "name": "揮發燃料", "desc": "爆擊會強化燃燒傷害並追加 2 層", "rarity": "epic", "rule": "burnCrit", "prerequisite": "incendiary", "mods": [] },
+    { "id": "wildfire", "name": "野火蔓延", "desc": "燃燒敵人死亡時，將燃燒傳給附近 3 名敵人", "rarity": "epic", "rule": "wildfire", "prerequisite": "incendiary", "mods": [] },
+    { "id": "cryoRounds", "name": "低溫彈藥", "desc": "命中疊加冰霜；3 層凍結敵人 1.2 秒", "rarity": "epic", "rule": "frost", "mods": [] },
+    { "id": "brittle", "name": "脆化裝甲", "desc": "凍結中的敵人承受傷害 +50%", "rarity": "epic", "rule": "brittle", "prerequisite": "cryoRounds", "mods": [] },
+    { "id": "shatter", "name": "碎冰衝擊", "desc": "凍結敵人死亡時，對附近敵人造成 80% 塔傷", "rarity": "epic", "rule": "shatter", "prerequisite": "cryoRounds", "mods": [] },
+
+    { "id": "frostNova", "name": "冰霜新星", "desc": "每 12 秒凍結全場敵人 1.2 秒", "rarity": "epic", "rule": "frostNova", "mods": [] },
+    { "id": "lastStand", "name": "背水結界", "desc": "每 40 秒自動擋下一次致命傷害", "rarity": "epic", "rule": "lastStand", "mods": [] },
+
+    { "id": "overcharge", "name": "超載核心", "desc": "傷害 +60%、攻擊速度 +40%", "rarity": "legendary", "mods": [{ "stat": "damage", "mult": 1.6 }, { "stat": "attackSpeed", "mult": 1.4 }] },
+    { "id": "apex", "name": "殲滅協議", "desc": "每擊殺一名敵人，本場傷害永久 +0.5%（無上限）", "rarity": "legendary", "rule": "apex", "mods": [] }
   ]
 }

@@ -113,7 +113,7 @@ export class Vfx {
         }
         case 'kill': {
           const def = typeById.get(e.typeId);
-          const color = def?.color ?? '#e05555';
+          const color = e.typeId === 'coin' ? '#ffd257' : def?.color ?? '#e05555';
           const n = e.typeId === 'boss' ? 26 : e.typeId === 'tank' ? 12 : 7;
           for (let i = 0; i < n; i++) {
             const a = this.rnd() * Math.PI * 2;

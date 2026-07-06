@@ -1,7 +1,7 @@
 import type { Bullet, Enemy, SimEvent, Stats } from './types';
 import { computeStats, IN_RUN_UPGRADES, type Levels } from './stats';
 import { upgradeCost, isMaxed } from './economy';
-import { applyPerks, hasPerk, isPerkWave, PERK_CONFIG, rollPerkChoices } from './perks';
+import { applyPerks, hasPerk, isPerkWave, PERK_CONFIG, perkStacks, rerollCost, rollPerkChoices } from './perks';
 import { applyCardStatMods, emptyMods, type RunMods } from './cards';
 import type { ResolvedUltimate } from './ultimates';
 import { mulberry32 } from './rng';
@@ -50,10 +50,20 @@ export interface SimState {
   over: boolean;
   rng: () => number;
   nextEnemyId: number;
-  /** 本場已取得的 Perk（死亡歸零，與場內升級同生命週期） */
+  /** 本場已取得的 Perk（死亡歸零，與場內升級同生命週期）；可重複代表疊層 */
   perks: string[];
   /** 待選擇的 Perk 三選一；非 null 時模擬暫停，等 choosePerk() */
   pendingPerks: string[] | null;
+  /** 本次三選一已重骰次數（決定下次重骰花費），選定/跳過時歸零 */
+  perkRerolls: number;
+  /** 觸發式 Perk 的即時狀態 */
+  shotCount: number;
+  killStreak: number;
+  killStreakTimer: number;
+  novaTimer: number;
+  shieldTimer: number;
+  shieldReady: boolean;
+  apexKills: number;
   /** 本場裝備卡片組出的加成（整場固定） */
   mods: RunMods;
   /** 本場可用的終極武器（已解析等級參數） */
@@ -105,6 +115,14 @@ export function newRun(
     nextEnemyId: 1,
     perks: [],
     pendingPerks: null,
+    perkRerolls: 0,
+    shotCount: 0,
+    killStreak: 0,
+    killStreakTimer: 0,
+    novaTimer: 12,
+    shieldTimer: 40,
+    shieldReady: false,
+    apexKills: 0,
     mods,
     ultimates,
     ultCooldowns: Object.fromEntries(ultimates.map((u) => [u.id, 0])),
@@ -120,6 +138,35 @@ function coinMultiplier(s: SimState): number {
   let m = 1;
   for (const a of s.ultActive) m *= a.coinMult;
   return m;
+}
+
+/** 觸發式 Perk 疊到攻速上的倍率（殺意連鎖） */
+function momentumMult(s: SimState): number {
+  if (!hasPerk(s.perks, 'momentum')) return 1;
+  return 1 + Math.min(s.killStreak * 0.03, 0.36);
+}
+
+/** 觸發式 Perk 疊到傷害上的即時倍率（腎上腺素、殲滅協議疊層） */
+function combatDamageMult(s: SimState): number {
+  let m = 1;
+  if (hasPerk(s.perks, 'adrenaline') && s.towerHp <= s.stats.maxHealth * 0.3) m *= 1.55;
+  if (hasPerk(s.perks, 'apex')) m *= 1 + s.apexKills * 0.005;
+  return m;
+}
+
+/** 產生一發追蹤子彈：套用精準節拍（每 4 發必爆）與即時傷害倍率 */
+function fireBullet(s: SimState, target: Enemy): void {
+  s.shotCount++;
+  const forced = hasPerk(s.perks, 'precision') && s.shotCount % 4 === 0;
+  const crit = forced || s.rng() < s.stats.critChance;
+  s.bullets.push({
+    x: 0,
+    y: 0,
+    targetId: target.id,
+    speed: BULLET_SPEED,
+    dmg: s.stats.damage * combatDamageMult(s) * (crit ? s.stats.critFactor : 1),
+    crit,
+  });
 }
 
 /**
@@ -190,6 +237,16 @@ function killEnemy(s: SimState, e: Enemy): void {
   s.cash += e.cashValue * s.stats.cashPerKill * coinMult;
   s.coinsEarned += e.coinValue * s.stats.coinBonus * coinMult;
   s.kills++;
+  // 觸發式 Perk：賞金爆裂（機率暴賞）、殲滅協議（永久傷害疊層）、殺意連鎖（連殺攻速）
+  if (hasPerk(s.perks, 'bountyBurst') && s.rng() < 0.12) {
+    s.cash += e.cashValue * s.stats.cashPerKill * coinMult * 3;
+    s.events.push({ type: 'kill', x: e.x, y: e.y, typeId: 'coin' });
+  }
+  if (hasPerk(s.perks, 'apex')) s.apexKills++;
+  if (hasPerk(s.perks, 'momentum')) {
+    s.killStreak = Math.min(s.killStreak + 1, 12);
+    s.killStreakTimer = 2;
+  }
   const zone = zoneForWave(s.wave);
   if (zone.mechanic.kind === 'frost') s.zoneMeter = Math.max(0, s.zoneMeter - 0.055);
   // 吸血卡：擊殺回復血量上限的比例
@@ -301,9 +358,10 @@ function startNextWave(s: SimState): void {
   s.spawnTimer = 0;
   s.events.push({ type: 'wave', wave: s.wave, boss: isBossWave(s.wave) });
   if (isPerkWave(s.wave)) {
-    const choices = rollPerkChoices(s.perks, s.rng, PERK_CONFIG.choices + s.mods.extraPerkChoices);
+    const choices = rollPerkChoices(s.perks, s.rng, PERK_CONFIG.choices + s.mods.extraPerkChoices, s.wave);
     if (choices.length > 0) {
       s.pendingPerks = choices;
+      s.perkRerolls = 0;
       s.events.push({ type: 'perkOffer', wave: s.wave, choices });
     }
   }
@@ -341,6 +399,29 @@ export function step(s: SimState, dt: number): void {
   }
 
   s.towerHp = Math.min(s.towerHp + s.stats.healthRegen * dt, s.stats.maxHealth);
+
+  // 觸發式 Perk 的計時效果
+  if (hasPerk(s.perks, 'momentum') && s.killStreakTimer > 0) {
+    s.killStreakTimer -= dt;
+    if (s.killStreakTimer <= 0) s.killStreak = 0;
+  }
+  if (hasPerk(s.perks, 'frostNova')) {
+    s.novaTimer -= dt;
+    if (s.novaTimer <= 0) {
+      s.novaTimer += 12;
+      for (const e of s.enemies) {
+        e.frozenTime = Math.max(e.frozenTime, 1.2);
+        s.events.push({ type: 'status', id: e.id, x: e.x, y: e.y, status: 'frost' });
+      }
+    }
+  }
+  if (hasPerk(s.perks, 'lastStand') && !s.shieldReady) {
+    s.shieldTimer -= dt;
+    if (s.shieldTimer <= 0) {
+      s.shieldTimer += 40;
+      s.shieldReady = true;
+    }
+  }
 
   const zone = zoneForWave(s.wave);
   if (zone.mechanic.kind === 'frost') s.zoneMeter = Math.min(zone.mechanic.value, s.zoneMeter + dt * 0.006);
@@ -465,7 +546,7 @@ export function step(s: SimState, dt: number): void {
   s.enemies.push(...summoned);
 
   // 塔索敵開火（用距離平方比較，冷卻可在單 tick 內多次觸發以支援高攻速）
-  const cooldown = 1 / (s.stats.attackSpeed * (1 - s.zoneMeter));
+  const cooldown = 1 / (s.stats.attackSpeed * momentumMult(s) * (1 - s.zoneMeter));
   s.attackTimer -= dt;
   while (s.attackTimer <= 0) {
     const rangeSq = s.stats.range * s.stats.range;
@@ -482,15 +563,9 @@ export function step(s: SimState, dt: number): void {
       s.attackTimer = 0;
       break;
     }
-    const crit = s.rng() < s.stats.critChance;
-    s.bullets.push({
-      x: 0,
-      y: 0,
-      targetId: target.id,
-      speed: BULLET_SPEED,
-      dmg: s.stats.damage * (crit ? s.stats.critFactor : 1),
-      crit,
-    });
+    fireBullet(s, target);
+    // 雙重射擊：機率立刻追加一發（不佔冷卻）
+    if (hasPerk(s.perks, 'doubleTap') && s.rng() < 0.14) fireBullet(s, target);
     s.events.push({ type: 'fire', angle: Math.atan2(target.y, target.x) });
     s.attackTimer += cooldown;
   }
@@ -508,13 +583,20 @@ export function step(s: SimState, dt: number): void {
     const dist = Math.hypot(dx, dy);
     const travel = b.speed * dt;
     if (dist <= travel + target.radius) {
-      // 命中傷害套用條件卡：頭目剋星、戰區傷害
+      // 命中傷害套用條件卡與觸發式 Perk：破甲、巨獸殺手、頭目剋星、脆化、戰區傷害
       let dmg = b.dmg;
+      if (hasPerk(s.perks, 'armorBreak') && target.hp >= target.maxHp) dmg *= 1.45;
+      if (hasPerk(s.perks, 'giantSlayer') && (target.typeId === 'boss' || target.summonEvery > 0)) dmg *= 1.5;
       if (target.frozenTime > 0 && hasPerk(s.perks, 'brittle')) dmg *= 1.5;
       if (target.typeId === 'boss' && s.mods.bossDamageMult > 1) dmg *= s.mods.bossDamageMult;
       const zoneBonus = s.mods.zoneDamage[zoneForWave(s.wave).id] ?? 0;
       if (zoneBonus > 0) dmg *= 1 + zoneBonus;
       target.hp -= dmg;
+      // 處決者：血量落入門檻直接了結（頭目門檻較低）
+      if (target.hp > 0 && hasPerk(s.perks, 'execute')) {
+        const thr = target.typeId === 'boss' ? 0.04 : 0.12;
+        if (target.hp <= target.maxHp * thr) target.hp = 0;
+      }
       if (hasPerk(s.perks, 'incendiary')) {
         const stacks = b.crit && hasPerk(s.perks, 'volatileFuel') ? 2 : 1;
         const burnDps = dmg * 0.18 * (hasPerk(s.perks, 'volatileFuel') && b.crit ? s.stats.critFactor : 1);
@@ -552,6 +634,13 @@ export function step(s: SimState, dt: number): void {
     }
   }
 
+  // 背水結界：致命傷害到來時消耗護盾，回到 25% 血量並重新充能
+  if (s.towerHp <= 0 && s.shieldReady) {
+    s.shieldReady = false;
+    s.shieldTimer = 40;
+    s.towerHp = s.stats.maxHealth * 0.25;
+    s.events.push({ type: 'towerHit', dmg: 0 });
+  }
   if (s.towerHp <= 0) {
     s.towerHp = 0;
     s.over = true;
@@ -577,6 +666,33 @@ export function choosePerk(s: SimState, perkId: string): boolean {
   if (!s.pendingPerks || !s.pendingPerks.includes(perkId)) return false;
   s.perks.push(perkId);
   s.pendingPerks = null;
+  s.perkRerolls = 0;
   recomputeStats(s);
   return true;
+}
+
+/** 本次三選一的重骰花費（場內現金）；無待選時為 0 */
+export function currentRerollCost(s: SimState): number {
+  return s.pendingPerks ? rerollCost(s.perkRerolls) : 0;
+}
+
+/** 花現金重骰三選一；成功回傳 true。模擬維持暫停。 */
+export function rerollPerks(s: SimState): boolean {
+  if (!s.pendingPerks) return false;
+  const cost = rerollCost(s.perkRerolls);
+  if (s.cash < cost) return false;
+  s.cash -= cost;
+  s.perkRerolls++;
+  s.pendingPerks = rollPerkChoices(s.perks, s.rng, PERK_CONFIG.choices + s.mods.extraPerkChoices, s.wave);
+  return true;
+}
+
+/** 跳過三選一，改領一小筆現金（銀行利息式，帶上限）；成功回傳 true 並恢復模擬。 */
+export function skipPerks(s: SimState): number {
+  if (!s.pendingPerks) return 0;
+  const reward = Math.min(Math.round(s.cash * PERK_CONFIG.skipRewardFrac), Math.round(s.stats.cashPerWave * 5));
+  s.cash += reward;
+  s.pendingPerks = null;
+  s.perkRerolls = 0;
+  return reward;
 }
