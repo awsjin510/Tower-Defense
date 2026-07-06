@@ -1,6 +1,6 @@
 import type { Levels } from '../core/stats';
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 const SAVE_KEY = 'tower-defense-save';
 
 /** 進行中的研究：以真實時間計，離線也在推進 */
@@ -37,6 +37,12 @@ export interface SaveData {
   activeResearch: ActiveResearch | null;
   /** 終極武器等級：id → 等級（0 未解鎖、1+ 可用）（v7 起） */
   ultimates: Record<string, number>;
+  /** 目前選擇的 Tier（v8 起） */
+  tier: number;
+  /** 已解鎖的最高 Tier（v8 起） */
+  tierMax: number;
+  /** 各 Tier 的最高波紀錄：tier → wave（v8 起） */
+  tierBestWave: Record<string, number>;
 }
 
 export function defaultSave(): SaveData {
@@ -57,6 +63,9 @@ export function defaultSave(): SaveData {
     researchLevels: {},
     activeResearch: null,
     ultimates: {},
+    tier: 1,
+    tierMax: 1,
+    tierBestWave: {},
   };
 }
 
@@ -86,6 +95,7 @@ export function migrate(raw: unknown): SaveData {
   // v4 → v5：cards / equipped / cardSlots 由 defaultSave 補預設（無卡、2 槽）。
   // v5 → v6：researchLevels / activeResearch 由 defaultSave 補預設（無研究、閒置）。
   // v6 → v7：ultimates 由 defaultSave 補 {}（無終極武器）。
+  // v7 → v8：tier / tierMax / tierBestWave 由 defaultSave 補預設（T1）。
   data.version = SAVE_VERSION;
   return data;
 }

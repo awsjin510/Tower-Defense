@@ -19,6 +19,7 @@ import {
   waveComposition,
 } from './waves';
 import { zoneForWave } from './zones';
+import { tierMods } from './tiers';
 
 export const TICK_DT = 1 / 30;
 export const ARENA_RADIUS = 330;
@@ -37,6 +38,8 @@ export interface SimState {
   inRunLevels: Levels;
   workshopLevels: Levels;
   researchLevels: Levels;
+  /** 難度 Tier（全域敵人倍率）；T1 = 基準 */
+  tier: number;
   enemies: Enemy[];
   bullets: Bullet[];
   spawnList: string[];
@@ -71,7 +74,8 @@ export function newRun(
   seed: number,
   mods: RunMods = emptyMods(),
   researchLevels: Levels = {},
-  ultimates: ResolvedUltimate[] = []
+  ultimates: ResolvedUltimate[] = [],
+  tier = 1
 ): SimState {
   const inRunLevels: Levels = {};
   const stats = computeStats(workshopLevels, inRunLevels, researchLevels);
@@ -88,6 +92,7 @@ export function newRun(
     inRunLevels,
     workshopLevels,
     researchLevels,
+    tier,
     enemies: [],
     bullets: [],
     spawnList: waveComposition(1, rng),
@@ -147,7 +152,8 @@ export function activateUltimate(s: SimState, id: string): boolean {
 function makeEnemy(s: SimState, typeId: string, x?: number, y?: number): Enemy {
   const def = ENEMY_TYPES.find((t) => t.id === typeId)!;
   const angle = s.rng() * Math.PI * 2;
-  const hp = enemyHp(s.wave, def.hpMult);
+  const tm = tierMods(s.tier); // 全域難度倍率
+  const hp = enemyHp(s.wave, def.hpMult) * tm.hp;
   return {
     id: s.nextEnemyId++,
     typeId,
@@ -156,9 +162,9 @@ function makeEnemy(s: SimState, typeId: string, x?: number, y?: number): Enemy {
     hp,
     maxHp: hp,
     speed: enemySpeed(s.wave, def.speedMult),
-    dmg: enemyDmg(s.wave, def.dmgMult),
-    cashValue: enemyCash(s.wave, def.rewardMult),
-    coinValue: enemyCoin(s.wave, def.rewardMult),
+    dmg: enemyDmg(s.wave, def.dmgMult) * tm.dmg,
+    cashValue: enemyCash(s.wave, def.rewardMult) * tm.reward,
+    coinValue: enemyCoin(s.wave, def.rewardMult) * tm.reward,
     radius: def.radius,
     attackTimer: 0,
     attackRange: def.attackRange ?? 0,
@@ -284,7 +290,7 @@ function startNextWave(s: SimState): void {
   if (s.mods.interest > 0) {
     s.cash += Math.min(s.cash * s.mods.interest, s.stats.cashPerWave * 10);
   }
-  s.coinsEarned += waveCoinBonus(s.wave) * s.stats.coinBonus * coinMultiplier(s);
+  s.coinsEarned += waveCoinBonus(s.wave) * s.stats.coinBonus * coinMultiplier(s) * tierMods(s.tier).reward;
   s.wave++;
   if (isZoneEntryWaveCompat(s.wave)) {
     s.zoneMeter = 0;

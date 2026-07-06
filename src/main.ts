@@ -45,6 +45,8 @@ import { render } from './ui/renderer';
 import { Vfx } from './ui/vfx';
 import { icon, type IconName } from './ui/icons';
 import { Sound } from './ui/sound';
+import { TIER_CONFIG, tierMods } from './core/tiers';
+import { selectTier, settleTier, tierBest } from './meta/tiers';
 import type { User } from 'firebase/auth';
 
 type CloudModule = typeof import('./cloud/firebase');
@@ -295,7 +297,39 @@ function refreshWorkshop(): void {
   for (const btn of workshopButtons) {
     refreshUpgradeButton(btn, save.workshopLevels[btn.def.id] ?? 0, save.coins, 'coin', startStats[btn.def.stat], startStats[btn.def.stat] + btn.def.valuePerLevel);
   }
+  refreshTierSelector();
 }
+
+// ---------- Tier 選擇器 ----------
+
+function refreshTierSelector(): void {
+  const tm = tierMods(save.tier);
+  $('#tier-name').textContent = `Tier ${save.tier}`;
+  const best = tierBest(save, save.tier);
+  const bestText = best > 0 ? `本 Tier 最高 W${best}` : '尚未挑戰';
+  const unlockText =
+    save.tier === save.tierMax && save.tierMax < TIER_CONFIG.maxTier
+      ? ` · 到 W${TIER_CONFIG.unlockWave} 解鎖 T${save.tierMax + 1}`
+      : '';
+  $('#tier-detail').textContent = `敵人 HP ×${tm.hp.toFixed(1)}、獎勵 ×${tm.reward.toFixed(1)} · ${bestText}${unlockText}`;
+  ($('#tier-prev') as HTMLButtonElement).disabled = save.tier <= 1;
+  ($('#tier-next') as HTMLButtonElement).disabled = save.tier >= save.tierMax;
+}
+
+$('#tier-prev').addEventListener('click', () => {
+  if (selectTier(save, save.tier - 1)) {
+    Sound.play('click');
+    saveProgress();
+    refreshTierSelector();
+  }
+});
+$('#tier-next').addEventListener('click', () => {
+  if (selectTier(save, save.tier + 1)) {
+    Sound.play('click');
+    saveProgress();
+    refreshTierSelector();
+  }
+});
 
 const cardsScreen = $('#cards-screen');
 const researchScreen = $('#research-screen');
@@ -711,7 +745,7 @@ function updateBattleHud(dt: number): void {
   dispCash += (sim.cash - dispCash) * k;
   dispCoin += (sim.coinsEarned - dispCoin) * k;
   dispHp += (sim.towerHp - dispHp) * k;
-  hud.wave.textContent = String(sim.wave);
+  hud.wave.textContent = sim.tier > 1 ? `T${sim.tier}·${sim.wave}` : String(sim.wave);
   const zone = zoneForWave(sim.wave);
   if (hud.zone.textContent !== zone.name) {
     hud.zone.textContent = zone.name;
@@ -1074,7 +1108,8 @@ function startBattle(): void {
     (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
     mods,
     save.researchLevels,
-    resolvedUltimates(save)
+    resolvedUltimates(save),
+    save.tier
   );
   resultsShown = false;
   perkOverlay.classList.remove('active');
@@ -1111,9 +1146,10 @@ function rollNumber(el: HTMLElement, target: number, dur: number, prefix: string
 function showResults(s: SimState): void {
   const isRecord = s.wave > save.bestWave;
   settleRun(save, { wave: s.wave, coinsEarned: s.coinsEarned, kills: s.kills, timeSec: s.time });
-  // 這一場刷新紀錄後可能解鎖新卡片 / 終極武器
+  // 這一場刷新紀錄後可能解鎖新卡片 / 終極武器 / Tier
   const newCards = syncCardUnlocks(save);
   const newUlts = syncUltimateUnlocks(save);
+  const newTier = settleTier(save, s.tier, s.wave);
   saveProgress();
   const unlockedLine = newCards.length
     ? `<div class="record">🃏 解鎖新卡片：${newCards.map((id) => cardById(id)?.name ?? id).join('、')}</div>`
@@ -1121,9 +1157,13 @@ function showResults(s: SimState): void {
   const ultLine = newUlts.length
     ? `<div class="record">💥 解鎖終極武器：${newUlts.map((id) => ultimateById(id)?.name ?? id).join('、')}</div>`
     : '';
+  const tierLine = newTier
+    ? `<div class="record">🔓 解鎖 Tier ${newTier}！（+🪙${formatNumber(TIER_CONFIG.firstClearCoins * newTier)}）</div>`
+    : '';
   $('#results-rows').innerHTML = `
     ${isRecord ? '<div class="record">🏆 新紀錄！</div>' : ''}
-    ${unlockedLine}${ultLine}
+    ${unlockedLine}${ultLine}${tierLine}
+    <div class="row"><span class="label">難度</span><span class="value">T${s.tier}</span></div>
     <div class="row"><span class="label">到達波次</span><span class="value">${s.wave}</span></div>
     <div class="row"><span class="label">擊殺數</span><span class="value">${formatNumber(s.kills)}</span></div>
     <div class="row"><span class="label">獲得金幣</span><span class="value coin" data-coinroll>+🪙 0</span></div>

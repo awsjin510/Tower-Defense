@@ -131,6 +131,19 @@
       #workshop-screen h1, #cards-screen h1, #research-screen h1, #ultimates-screen h1 { font-size: 20px; margin-bottom: 2px; }
       #workshop-screen .sub, #cards-screen .sub, #research-screen .sub, #ultimates-screen .sub { color: #8b949e; font-size: 13px; margin-bottom: 12px; }
       #workshop-screen h2 { font-size: 14px; color: #8b949e; margin: 14px 0 6px; }
+
+      /* Tier 選擇器 */
+      #tier-selector {
+        display: flex; align-items: center; gap: 10px; margin-top: 16px;
+        background: var(--panel); border: 1px solid var(--brd); border-radius: 12px; padding: 10px 12px;
+        box-shadow: var(--glass-hi);
+      }
+      #tier-selector button { width: 40px; height: 40px; flex: 0 0 40px; border-radius: 10px;
+        background: #21262d; border: 1px solid #30363d; color: #e6edf3; font-size: 16px; cursor: pointer; }
+      #tier-selector button:disabled { opacity: 0.3; cursor: default; }
+      #tier-info { flex: 1; text-align: center; }
+      #tier-name { font-family: var(--font-num); font-size: 18px; font-weight: 800; color: #ff9d5c; letter-spacing: 1px; }
+      #tier-detail { font-size: 11px; color: #8b949e; font-variant-numeric: tabular-nums; margin-top: 2px; }
       #workshop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
       /* 工坊 / 卡片 分頁切換 */
@@ -547,6 +560,14 @@
         <h1>工坊</h1>
         <div class="sub">用金幣購買永久升級，每一場都會更強</div>
         <div id="workshop-grid"></div>
+        <div id="tier-selector">
+          <button id="tier-prev" type="button" aria-label="上一個 Tier">◀</button>
+          <div id="tier-info">
+            <div id="tier-name">Tier 1</div>
+            <div id="tier-detail"></div>
+          </div>
+          <button id="tier-next" type="button" aria-label="下一個 Tier">▶</button>
+        </div>
         <button id="start-btn">開始戰鬥</button>
       </div>
 
