@@ -47,13 +47,23 @@ export function waveCoinBonus(wave: number): number {
   return WAVE_CONFIG.waveCoinBase * Math.pow(WAVE_CONFIG.waveCoinGrowth, wave - 1);
 }
 
-/** 本波敵人組成：一般敵人依權重隨機，Boss 波額外加一隻頭目 */
+/** 本波敵人組成：一般敵人依權重隨機（稀有單位權重低），Boss 波額外加一隻頭目 */
 export function waveComposition(wave: number, rng: () => number): string[] {
   const available = ENEMY_TYPES.filter((t) => t.id !== 'boss' && wave >= t.minWave);
+  const total = available.reduce((sum, t) => sum + (t.weight ?? 1), 0);
   const result: string[] = [];
   const count = enemyCountForWave(wave);
   for (let i = 0; i < count; i++) {
-    result.push(available[Math.floor(rng() * available.length)].id);
+    let r = rng() * total;
+    let pick = available[available.length - 1].id;
+    for (const t of available) {
+      r -= t.weight ?? 1;
+      if (r <= 0) {
+        pick = t.id;
+        break;
+      }
+    }
+    result.push(pick);
   }
   if (isBossWave(wave)) result.push('boss');
   return result;

@@ -230,6 +230,22 @@ function killEnemy(s: SimState, e: Enemy): void {
       s.events.push({ type: 'status', id: n.id, x: n.x, y: n.y, status: 'empower' });
     }
   }
+
+  // 分裂體：死亡時分裂出數隻子體（子體為非分裂類型，不會無限分裂）
+  const deadDef = ENEMY_TYPES.find((t) => t.id === e.typeId);
+  if (deadDef?.splitInto && deadDef.splitInto > 0) {
+    const childType = deadDef.splitType ?? 'fast';
+    for (let k = 0; k < deadDef.splitInto; k++) {
+      const a = (k / deadDef.splitInto) * Math.PI * 2 + s.rng();
+      const child = makeEnemy(s, childType, e.x + Math.cos(a) * (e.radius + 6), e.y + Math.sin(a) * (e.radius + 6));
+      child.hp *= 0.5;
+      child.maxHp = child.hp;
+      child.cashValue *= 0.35;
+      child.coinValue *= 0.35;
+      s.enemies.push(child);
+    }
+    s.events.push({ type: 'summon', x: e.x, y: e.y });
+  }
 }
 
 function nearestEnemies(s: SimState, x: number, y: number, count: number, excludeId = -1): Enemy[] {
@@ -360,6 +376,23 @@ export function step(s: SimState, dt: number): void {
     s.interWaveTimer = WAVE_CONFIG.interWaveDelay;
   }
 
+  // 護盾兵光環：治療範圍內的同伴，強迫玩家優先擊殺護盾兵
+  const protectors = s.enemies.filter((e) => {
+    const d = ENEMY_TYPES.find((t) => t.id === e.typeId);
+    return d?.auraHeal && d.auraHeal > 0;
+  });
+  for (const p of protectors) {
+    const d = ENEMY_TYPES.find((t) => t.id === p.typeId)!;
+    const radSq = (d.auraRadius ?? 120) ** 2;
+    const heal = (d.auraHeal ?? 0) * dt;
+    for (const e of s.enemies) {
+      if (e === p || e.hp >= e.maxHp) continue;
+      if ((e.x - p.x) ** 2 + (e.y - p.y) ** 2 <= radSq) {
+        e.hp = Math.min(e.maxHp, e.hp + heal * e.maxHp);
+      }
+    }
+  }
+
   // 敵人移動與攻擊（遠程敵人走到 attackRange 就停下開火；近戰貼塔）
   const summoned: Enemy[] = [];
   for (const e of s.enemies) {
@@ -381,6 +414,12 @@ export function step(s: SimState, dt: number): void {
         s.towerHp -= e.dmg;
         s.events.push({ type: 'towerHit', dmg: e.dmg });
         if (e.attackRange > 0) s.events.push({ type: 'enemyShot', x: e.x, y: e.y });
+        // 吸血菁英：攻擊塔時回復自身血量
+        const eDef = ENEMY_TYPES.find((t) => t.id === e.typeId);
+        if (eDef?.lifesteal && e.hp < e.maxHp) {
+          e.hp = Math.min(e.maxHp, e.hp + eDef.lifesteal * e.maxHp);
+          s.events.push({ type: 'status', id: e.id, x: e.x, y: e.y, status: 'empower' });
+        }
         // 荊棘反傷卡：近戰攻擊者受到一部分傷害反彈
         if (s.mods.thorns > 0 && e.attackRange === 0) {
           e.hp -= e.dmg * s.mods.thorns;

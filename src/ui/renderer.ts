@@ -105,6 +105,40 @@ function traceEnemy(ctx: CanvasRenderingContext2D, e: Enemy, time: number): void
       ctx.closePath();
       break;
     }
+    case 'vampire': {
+      // 五角星（菁英尖刺感）
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i / 10) * Math.PI * 2;
+        const rr = i % 2 === 0 ? r * 1.25 : r * 0.55;
+        const px = e.x + Math.cos(a) * rr;
+        const py = e.y + Math.sin(a) * rr;
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      break;
+    }
+    case 'protector': {
+      // 八角形（裝甲/防禦感）
+      for (let i = 0; i < 8; i++) {
+        const a = Math.PI / 8 + (i / 8) * Math.PI * 2;
+        const px = e.x + Math.cos(a) * r;
+        const py = e.y + Math.sin(a) * r;
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      break;
+    }
+    case 'splitter': {
+      // 五邊形（會裂開的團塊）
+      for (let i = 0; i < 5; i++) {
+        const a = -Math.PI / 2 + (i / 5) * Math.PI * 2;
+        const px = e.x + Math.cos(a) * r;
+        const py = e.y + Math.sin(a) * r;
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      break;
+    }
     default:
       ctx.arc(e.x, e.y, r, 0, Math.PI * 2);
   }
@@ -347,6 +381,18 @@ export function render(
   // 敵人（形狀 + 血條 + 命中閃白）
   for (const e of s.enemies) {
     const base = enemyColor.get(e.typeId) ?? '#e05555';
+    // 護盾兵：畫出治療光環，讓玩家一眼看出威脅來源
+    if (e.typeId === 'protector') {
+      const rad = ENEMY_TYPES.find((t) => t.id === 'protector')?.auraRadius ?? 130;
+      const pulse = 0.5 + Math.sin(s.time * 3) * 0.5;
+      ctx.strokeStyle = tint(base, 0.16 + pulse * 0.12);
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 7]);
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, rad, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     // 徑向漸層填色 + 同色外輝光，讓敵人有體積感並在暗背景中發亮
     ctx.save();
     ctx.shadowColor = base;

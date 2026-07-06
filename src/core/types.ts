@@ -40,6 +40,16 @@ export interface EnemyTypeDef {
   summonEvery?: number;
   summonCount?: number;
   summonType?: string;
+  /** 出怪權重（未填 = 1）；讓稀有單位（如護盾兵）少出 */
+  weight?: number;
+  /** 分裂體：死亡時分裂出幾隻子體、子體類型 */
+  splitInto?: number;
+  splitType?: string;
+  /** 吸血菁英：攻擊塔時回復自身血量（佔自身血量上限比例） */
+  lifesteal?: number;
+  /** 護盾兵：每秒治療範圍內同伴（佔其血量上限比例）與範圍 */
+  auraHeal?: number;
+  auraRadius?: number;
 }
 
 export interface EnemyScaling {
