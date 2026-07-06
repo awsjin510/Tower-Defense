@@ -39,12 +39,14 @@
         min-height: 34px; padding: 4px 12px; background: #0d1117; color: #8b949e;
         border-bottom: 1px solid #21262d; font-size: 11px;
       }
-      #auth-btn, #account-btn {
+      #auth-btn, #account-btn, #sound-btn {
         padding: 4px 9px; border: 1px solid #30363d; border-radius: 6px;
         background: #21262d; color: #e6edf3; font-size: 11px; cursor: pointer;
       }
       #auth-btn:disabled { opacity: 0.5; }
       #account-btn { border-color: #2b6cb0; }
+      #sound-btn { padding: 4px 7px; font-size: 13px; line-height: 1; }
+      #sound-btn.muted { opacity: 0.5; }
 
       #topbar {
         display: flex; align-items: center; gap: 12px;
@@ -532,7 +534,7 @@
   </head>
   <body>
     <div id="app">
-      <div id="authbar"><span id="auth-status">本機存檔</span><button id="account-btn" type="button">帳戶</button><button id="auth-btn" type="button">Google 登入</button></div>
+      <div id="authbar"><span id="auth-status">本機存檔</span><button id="sound-btn" type="button" title="音效開關">🔊</button><button id="account-btn" type="button">帳戶</button><button id="auth-btn" type="button">Google 登入</button></div>
       <header id="topbar"></header>
 
       <div id="workshop-screen" class="screen active">

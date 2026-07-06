@@ -44,6 +44,7 @@ import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
 import { render } from './ui/renderer';
 import { Vfx } from './ui/vfx';
 import { icon, type IconName } from './ui/icons';
+import { Sound } from './ui/sound';
 import type { User } from 'firebase/auth';
 
 type CloudModule = typeof import('./cloud/firebase');
@@ -274,6 +275,7 @@ function refreshUpgradeButton(
 const workshopButtons: UpgradeButton[] = WORKSHOP_UPGRADES.map((def) =>
   makeUpgradeButton(def, () => {
     if (buyWorkshopUpgrade(save, def.id)) {
+      Sound.play('buy');
       saveProgress();
       refreshWorkshop();
     }
@@ -623,7 +625,10 @@ setInterval(tickResearch, 1000);
 
 const battleButtons: UpgradeButton[] = IN_RUN_UPGRADES.map((def) =>
   makeUpgradeButton(def, () => {
-    if (sim && buyInRunUpgrade(sim, def.id)) refreshBattleButtons();
+    if (sim && buyInRunUpgrade(sim, def.id)) {
+      Sound.play('buy');
+      refreshBattleButtons();
+    }
   })
 );
 
@@ -1125,6 +1130,8 @@ function showResults(s: SimState): void {
     <div class="row"><span class="label">歷史最高</span><span class="value">${save.bestWave}</span></div>`;
   $('#results').classList.add('active');
   rollNumber($('#results-rows').querySelector('[data-coinroll]') as HTMLElement, s.coinsEarned, 0.8, '+🪙 ');
+  Sound.play('gameover');
+  if (s.coinsEarned >= 1) setTimeout(() => Sound.coinCascade(), 350);
 }
 
 // ---------- 主迴圈：固定 tick 模擬 + 每幀渲染 ----------
@@ -1144,8 +1151,16 @@ function frame(now: number): void {
       // 取走本 tick 的視覺事件（下個 step 開頭會清空）
       vfx.ingest(sim.events);
       for (const e of sim.events) {
-        if (e.type === 'wave') showWaveBanner(e.wave, e.boss);
+        if (e.type === 'wave') {
+          showWaveBanner(e.wave, e.boss);
+          Sound.play(e.boss ? 'boss' : 'wave');
+        }
         if (e.type === 'perkOffer') showPerkChoice(e.wave, e.choices);
+        else if (e.type === 'fire') Sound.play('fire');
+        else if (e.type === 'hit') Sound.play(e.crit ? 'crit' : 'hit');
+        else if (e.type === 'kill') Sound.play('kill');
+        else if (e.type === 'ultActivate') Sound.play('ult');
+        else if (e.type === 'ultNuke') Sound.play('nuke');
       }
       accumulator -= TICK_DT;
     }
@@ -1172,18 +1187,34 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
-$('#start-btn').addEventListener('click', startBattle);
+$('#start-btn').addEventListener('click', () => {
+  Sound.play('click');
+  startBattle();
+});
 $('#results-btn').addEventListener('click', showWorkshop);
 
 // 工坊 / 卡片 / 研究 分頁切換
 for (const b of document.querySelectorAll<HTMLButtonElement>('.meta-nav button')) {
   b.addEventListener('click', () => {
+    Sound.play('click');
     if (b.dataset.meta === 'cards') showCards();
     else if (b.dataset.meta === 'research') showResearch();
     else if (b.dataset.meta === 'ultimates') showUltimates();
     else showWorkshop();
   });
 }
+
+// 音效：首個手勢喚醒音訊環境；靜音鈕
+const soundBtn = $('#sound-btn') as HTMLButtonElement;
+soundBtn.textContent = Sound.muted ? '🔇' : '🔊';
+soundBtn.classList.toggle('muted', Sound.muted);
+soundBtn.addEventListener('click', () => {
+  const muted = Sound.toggleMute();
+  soundBtn.textContent = muted ? '🔇' : '🔊';
+  soundBtn.classList.toggle('muted', muted);
+  if (!muted) Sound.play('click');
+});
+window.addEventListener('pointerdown', () => Sound.unlock(), { once: true });
 
 showWorkshop();
 checkOfflineEarnings();
