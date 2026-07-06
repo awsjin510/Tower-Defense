@@ -479,34 +479,83 @@
       #workshop-screen h1, #cards-screen h1, #research-screen h1, #ultimates-screen h1 {
         text-shadow: 0 0 16px rgba(74,163,255,0.25);
       }
+
+      /* ===== 統一圖示與資訊層級 ===== */
+      .ui-icon { width: 1.15em; height: 1.15em; display: inline-block; flex: 0 0 auto; vertical-align: -0.18em; }
+      .meta-nav button, #tabs button, #start-btn, .screen h1 { display: flex; align-items: center; justify-content: center; gap: 7px; }
+      .meta-nav .ui-icon { width: 18px; height: 18px; }
+      .screen h1 { justify-content: flex-start; }
+      .icon-attack { color: #ff6b6b; } .icon-defense { color: #62c4ff; } .icon-economy, .icon-coin { color: #ffd45c; }
+      .icon-fire { color: #ff7a3d; } .icon-frost { color: #72d8ff; } .icon-risk { color: #ff6868; }
+
+      #topbar.battle-hud { gap: 7px; padding-left: 10px; padding-right: 10px; }
+      #topbar.battle-hud .stat { min-width: 0; padding: 4px 7px; border-radius: 9px; background: rgba(5,10,18,.34); border: 1px solid rgba(126,160,215,.1); }
+      #topbar.battle-hud .stat-primary { border-color: rgba(74,163,255,.3); }
+      #topbar .label { display: flex; align-items: center; gap: 4px; }
+      #topbar .label .ui-icon { width: 11px; height: 11px; }
+      #topbar .hp-track { width: 88px; height: 4px; margin-top: 3px; border-radius: 4px; overflow: hidden; background: rgba(255,255,255,.08); }
+      #topbar .hp-fill { display:block; height:100%; width:100%; background:#4fe08a; box-shadow:0 0 8px currentColor; transition: width .15s, background .15s; }
+      #topbar .status-pips { display:flex; gap:3px; margin-top:3px; min-height:4px; }
+      #topbar .status-pips span { width:12px; height:3px; border-radius:4px; box-shadow:0 0 7px currentColor; }
+
+      #canvas-wrap { min-height: 280px; }
+      #bottom { flex: 0 0 auto; }
+      .upgrade-grid { max-height: 29vh; }
+      .upgrade-btn .value { display:flex; align-items:baseline; gap:7px; }
+      .upgrade-btn .preview { color:#4fe08a; font-size:12px; text-shadow:0 0 8px rgba(79,224,138,.35); }
+      .upgrade-btn.bought { animation: upgradeBuy .42s ease-out; border-color:#7dffb0; }
+      @keyframes upgradeBuy { 0%{transform:scale(.96);filter:brightness(1)} 45%{transform:scale(1.025);filter:brightness(1.8)} 100%{transform:scale(1);filter:brightness(1)} }
+
+      .perk-card { position:relative; display:grid; grid-template-columns:40px 1fr auto; grid-template-areas:'art title rarity' 'art desc desc' 'art link link'; column-gap:10px; align-items:center; overflow:hidden; }
+      .perk-card::before { content:''; position:absolute; inset:0 auto 0 0; width:3px; background:var(--perk-color,#4aa3ff); box-shadow:0 0 12px var(--perk-color,#4aa3ff); }
+      .perk-art { grid-area:art; width:38px; height:38px; display:flex; align-items:center; justify-content:center; border-radius:10px; color:var(--perk-color); background:color-mix(in srgb, var(--perk-color) 14%, transparent); border:1px solid color-mix(in srgb, var(--perk-color) 40%, transparent); }
+      .perk-art .ui-icon { width:23px; height:23px; }
+      .perk-name { grid-area:title; } .perk-desc { grid-area:desc; }
+      .perk-rarity { grid-area:rarity; color:var(--perk-color); font-size:10px; font-weight:900; letter-spacing:1px; }
+      .perk-link { grid-area:link; color:#9bb3ce; font-size:10px; }
+      .perk-card.school-fire { --perk-color:#ff7a3d; } .perk-card.school-frost { --perk-color:#72d8ff; }
+      .perk-card.school-risk { --perk-color:#ff6868; } .perk-card.school-stat { --perk-color:#8cb8ff; }
+      .perk-card.risky .perk-name::after { content:" 高風險"; }
+
+      @media (max-width: 480px) {
+        #topbar.battle-hud { display:grid; grid-template-columns:.7fr 1.25fr 1fr 1fr auto; }
+        #topbar.battle-hud .hp-stat { grid-column:1 / 5; grid-row:2; flex-direction:row; align-items:center; gap:7px; }
+        #topbar .hp-track { flex:1; width:auto; margin:0; }
+        #topbar.battle-hud .speed-btn { grid-column:5; grid-row:1 / 3; height:100%; }
+        #topbar.battle-hud .spacer { display:none; }
+        #topbar .stat .value { font-size:13px; }
+        #topbar .stat .value[data-zone] { max-width:86px; overflow:hidden; text-overflow:ellipsis; }
+        .upgrade-grid { max-height:28vh; }
+        #wave-banner { max-width:92%; white-space:normal; text-align:center; font-size:13px; }
+      }
     </style>
   </head>
   <body>
     <div id="app">
-      <div id="authbar"><span id="auth-status">本機存檔</span><button id="account-btn" type="button">👤 帳戶</button><button id="auth-btn" type="button">Google 登入</button></div>
+      <div id="authbar"><span id="auth-status">本機存檔</span><button id="account-btn" type="button">帳戶</button><button id="auth-btn" type="button">Google 登入</button></div>
       <header id="topbar"></header>
 
       <div id="workshop-screen" class="screen active">
         <div class="meta-nav">
-          <button data-meta="workshop" class="active" type="button">🛠️ 工坊</button>
-          <button data-meta="cards" type="button">🃏 卡片</button>
-          <button data-meta="research" type="button">🔬 研究</button>
-          <button data-meta="ultimates" type="button">💥 終極</button>
+          <button data-meta="workshop" class="active" type="button">工坊</button>
+          <button data-meta="cards" type="button">卡片</button>
+          <button data-meta="research" type="button">研究</button>
+          <button data-meta="ultimates" type="button">終極</button>
         </div>
-        <h1>🛠️ 工坊</h1>
+        <h1>工坊</h1>
         <div class="sub">用金幣購買永久升級，每一場都會更強</div>
         <div id="workshop-grid"></div>
-        <button id="start-btn">⚔️ 開始戰鬥</button>
+        <button id="start-btn">開始戰鬥</button>
       </div>
 
       <div id="cards-screen" class="screen">
         <div class="meta-nav">
-          <button data-meta="workshop" type="button">🛠️ 工坊</button>
-          <button data-meta="cards" class="active" type="button">🃏 卡片</button>
-          <button data-meta="research" type="button">🔬 研究</button>
-          <button data-meta="ultimates" type="button">💥 終極</button>
+          <button data-meta="workshop" type="button">工坊</button>
+          <button data-meta="cards" class="active" type="button">卡片</button>
+          <button data-meta="research" type="button">研究</button>
+          <button data-meta="ultimates" type="button">終極</button>
         </div>
-        <h1>🃏 卡片</h1>
+        <h1>卡片</h1>
         <div class="sub">戰前配置卡片，槽位有限——取捨出你的流派</div>
         <div id="card-loadout-label"></div>
         <div id="card-loadout"></div>
@@ -515,24 +564,24 @@
 
       <div id="research-screen" class="screen">
         <div class="meta-nav">
-          <button data-meta="workshop" type="button">🛠️ 工坊</button>
-          <button data-meta="cards" type="button">🃏 卡片</button>
-          <button data-meta="research" class="active" type="button">🔬 研究</button>
-          <button data-meta="ultimates" type="button">💥 終極</button>
+          <button data-meta="workshop" type="button">工坊</button>
+          <button data-meta="cards" type="button">卡片</button>
+          <button data-meta="research" class="active" type="button">研究</button>
+          <button data-meta="ultimates" type="button">終極</button>
         </div>
-        <h1>🔬 研究室</h1>
+        <h1>研究室</h1>
         <div class="sub">用真實時間跑研究，離線也在推進——一次只能跑一項</div>
         <div id="research-list"></div>
       </div>
 
       <div id="ultimates-screen" class="screen">
         <div class="meta-nav">
-          <button data-meta="workshop" type="button">🛠️ 工坊</button>
-          <button data-meta="cards" type="button">🃏 卡片</button>
-          <button data-meta="research" type="button">🔬 研究</button>
-          <button data-meta="ultimates" class="active" type="button">💥 終極</button>
+          <button data-meta="workshop" type="button">工坊</button>
+          <button data-meta="cards" type="button">卡片</button>
+          <button data-meta="research" type="button">研究</button>
+          <button data-meta="ultimates" class="active" type="button">終極</button>
         </div>
-        <h1>💥 終極武器</h1>
+        <h1>終極武器</h1>
         <div class="sub">戰鬥中施放的大招——達里程碑解鎖，用金幣升級威力與冷卻</div>
         <div id="ultimates-list"></div>
       </div>

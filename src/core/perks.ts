@@ -32,6 +32,20 @@ export function perkById(id: string): PerkDef | undefined {
   return PERKS.find((p) => p.id === id);
 }
 
+export type PerkSchool = 'fire' | 'frost' | 'risk' | 'stat';
+export function perkSchool(def: PerkDef): PerkSchool {
+  if (def.rule?.startsWith('burn') || def.rule === 'wildfire') return 'fire';
+  if (def.rule === 'frost' || def.rule === 'brittle' || def.rule === 'shatter') return 'frost';
+  if (def.risky) return 'risk';
+  return 'stat';
+}
+
+export function perkRarity(def: PerkDef): '標準' | '稀有' | '史詩' {
+  if (def.prerequisite) return '史詩';
+  if (def.rule || def.risky) return '稀有';
+  return '標準';
+}
+
 /** 把已取得的 Perk 套到屬性上（在升級加成之後：先加後乘） */
 export function applyPerks(stats: Stats, perkIds: string[]): void {
   for (const id of perkIds) {

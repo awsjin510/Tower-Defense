@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newRun, step, choosePerk, TICK_DT, type SimState } from '../src/core/sim';
-import { applyPerks, isPerkWave, perkById, rollPerkChoices, PERKS, PERK_CONFIG } from '../src/core/perks';
+import { applyPerks, isPerkWave, perkById, perkRarity, perkSchool, rollPerkChoices, PERKS, PERK_CONFIG } from '../src/core/perks';
 import { BASE_STATS } from '../src/core/stats';
 import { mulberry32 } from '../src/core/rng';
 
@@ -49,6 +49,13 @@ describe('perks', () => {
     const withCore = rollPerkChoices(PERKS.filter((p) => !p.prerequisite).map((p) => p.id), mulberry32(1), 99);
     expect(withCore).toContain('wildfire');
     expect(withCore).toContain('volatileFuel');
+  });
+
+  it('視覺分類能辨識燃燒、冰凍、風險與進階稀有度', () => {
+    expect(perkSchool(perkById('incendiary')!)).toBe('fire');
+    expect(perkSchool(perkById('cryoRounds')!)).toBe('frost');
+    expect(perkSchool(perkById('glassCannon')!)).toBe('risk');
+    expect(perkRarity(perkById('wildfire')!)).toBe('史詩');
   });
 
   it('applyPerks 乘法與加法正確、暴擊率夾在 0.8', () => {

@@ -1,10 +1,10 @@
 import { activateUltimate, buyInRunUpgrade, choosePerk, newRun, step, TICK_DT, type SimState } from './core/sim';
 import { IN_RUN_UPGRADES, WORKSHOP_UPGRADES, computeStats } from './core/stats';
 import { formatNumber, isMaxed, upgradeCost } from './core/economy';
-import { perkById } from './core/perks';
+import { applyPerks, perkById, perkRarity, perkSchool } from './core/perks';
 import { offlineCoins } from './core/offline';
 import { isZoneEntryWave, zoneForWave } from './core/zones';
-import { CARDS, CARD_CONFIG, buildRunMods, cardById, describeCard } from './core/cards';
+import { CARDS, CARD_CONFIG, applyCardStatMods, buildRunMods, cardById, describeCard, type CardDef } from './core/cards';
 import {
   buyStarUp,
   buySlot,
@@ -43,6 +43,7 @@ import { applySave, ensurePlayerId, localStorageStore, type SaveData } from './m
 import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
 import { render } from './ui/renderer';
 import { Vfx } from './ui/vfx';
+import { icon, type IconName } from './ui/icons';
 import type { User } from 'firebase/auth';
 
 type CloudModule = typeof import('./cloud/firebase');
@@ -86,6 +87,24 @@ const canvas = $('#game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 const authStatus = $('#auth-status');
 const authButton = $('#auth-btn') as HTMLButtonElement;
+
+const META_ICONS: Record<string, IconName> = { workshop: 'workshop', cards: 'cards', research: 'research', ultimates: 'ultimate' };
+function decorateStaticUi(): void {
+  for (const b of document.querySelectorAll<HTMLButtonElement>('.meta-nav button')) {
+    const name = META_ICONS[b.dataset.meta ?? ''];
+    if (name && !b.querySelector('svg')) b.innerHTML = `${icon(name)}<span>${b.textContent}</span>`;
+  }
+  const headings: Array<[string, IconName]> = [
+    ['#workshop-screen h1', 'workshop'], ['#cards-screen h1', 'cards'],
+    ['#research-screen h1', 'research'], ['#ultimates-screen h1', 'ultimate'],
+  ];
+  for (const [sel, name] of headings) {
+    const h = $(sel); h.innerHTML = `${icon(name)}<span>${h.textContent}</span>`;
+  }
+  $('#start-btn').innerHTML = `${icon('play')}<span>開始戰鬥</span>`;
+  $('#account-btn').innerHTML = `${icon('user')}<span>帳戶</span>`;
+}
+decorateStaticUi();
 
 function setAuthStatus(text: string, busy = false): void {
   authStatus.textContent = text;
@@ -212,9 +231,16 @@ function makeUpgradeButton(def: UpgradeDef, onClick: () => void): UpgradeButton 
   el.className = 'upgrade-btn';
   el.innerHTML =
     `<span class="name"></span>` +
-    `<span class="value"></span>` +
+    `<span class="value"><span class="current"></span><span class="preview"></span></span>` +
     `<span class="foot"><span class="delta"></span><span class="cost"></span></span>`;
-  el.addEventListener('click', onClick);
+  el.dataset.upgrade = def.id;
+  el.addEventListener('click', () => {
+    onClick();
+    el.classList.remove('bought');
+    void el.offsetWidth;
+    el.classList.add('bought');
+    setTimeout(() => el.classList.remove('bought'), 450);
+  });
   return { el, def };
 }
 
@@ -223,15 +249,17 @@ function refreshUpgradeButton(
   level: number,
   currency: number,
   currencyClass: string,
-  currentValue: number
+  currentValue: number,
+  nextValue = currentValue + def.valuePerLevel
 ): void {
   const { def, el } = btn;
   const maxed = isMaxed(def, level);
   const cost = upgradeCost(def, level);
   (el.querySelector('.name') as HTMLElement).textContent = `${def.name} Lv.${level}`;
   // 目前的實際數值（含工坊 + 場內 + Perk 的總和），一眼看懂目前狀態
-  (el.querySelector('.value') as HTMLElement).textContent = fmtStatValue(def.stat, currentValue);
-  (el.querySelector('.delta') as HTMLElement).textContent = `每級 ${fmtStatDelta(def.stat, def.valuePerLevel)}`;
+  (el.querySelector('.current') as HTMLElement).textContent = fmtStatValue(def.stat, currentValue);
+  (el.querySelector('.preview') as HTMLElement).textContent = maxed ? '' : `→ ${fmtStatValue(def.stat, nextValue)}`;
+  (el.querySelector('.delta') as HTMLElement).textContent = maxed ? '已達上限' : `提升 ${fmtStatDelta(def.stat, nextValue - currentValue)}`;
   const costEl = el.querySelector('.cost') as HTMLElement;
   costEl.className = `cost ${currencyClass}`;
   costEl.textContent = maxed ? 'MAX' : formatNumber(cost);
@@ -254,15 +282,16 @@ const workshopButtons: UpgradeButton[] = WORKSHOP_UPGRADES.map((def) =>
 for (const btn of workshopButtons) $('#workshop-grid').appendChild(btn.el);
 
 function refreshWorkshop(): void {
+  topbar.classList.remove('battle-hud');
   topbar.innerHTML = `
-    <div class="stat"><span class="label">金幣</span><span class="value coin">🪙 ${formatNumber(save.coins)}</span></div>
+    <div class="stat"><span class="label">${icon('coin')}金幣</span><span class="value coin">${formatNumber(save.coins)}</span></div>
     <div class="stat"><span class="label">最高波次</span><span class="value">${save.bestWave}</span></div>
     <div class="stat"><span class="label">總場數</span><span class="value">${save.totalRuns}</span></div>
     <div class="spacer"></div>`;
   // 工坊顯示「每場開局」的屬性值（永久升級 + 研究套用後、尚未買場內升級時的起點）
   const startStats = computeStats(save.workshopLevels, {}, save.researchLevels);
   for (const btn of workshopButtons) {
-    refreshUpgradeButton(btn, save.workshopLevels[btn.def.id] ?? 0, save.coins, 'coin', startStats[btn.def.stat]);
+    refreshUpgradeButton(btn, save.workshopLevels[btn.def.id] ?? 0, save.coins, 'coin', startStats[btn.def.stat], startStats[btn.def.stat] + btn.def.valuePerLevel);
   }
 }
 
@@ -314,6 +343,15 @@ function starDots(star: number, max: number): string {
   return out;
 }
 
+function cardIcon(def: CardDef): IconName {
+  if (def.effect.kind === 'slowAura') return 'frost';
+  if (def.effect.kind === 'thorns' || def.effect.kind === 'lifesteal' || def.effect.stat === 'maxHealth') return 'defense';
+  if (def.effect.kind === 'interest' || def.effect.stat === 'coinBonus') return 'economy';
+  if (def.effect.kind === 'zoneDamage') return 'zone';
+  if (def.effect.kind === 'extraPerk') return 'perk';
+  return 'attack';
+}
+
 function refreshCardCell(cell: HTMLElement): void {
   const id = cell.dataset.card!;
   const def = cardById(id)!;
@@ -325,7 +363,7 @@ function refreshCardCell(cell: HTMLElement): void {
   cell.classList.toggle('locked', !owned);
   if (!owned) {
     cell.innerHTML = `
-      <div class="card-art locked-art">🔒</div>
+      <div class="card-art locked-art">${icon('lock')}</div>
       <div class="card-name">${def.name}</div>
       <div class="card-sub">波次 ${def.unlockWave} 解鎖</div>`;
     return;
@@ -335,7 +373,7 @@ function refreshCardCell(cell: HTMLElement): void {
   cell.style.setProperty('--card-color', def.color);
   cell.innerHTML = `
     <div class="card-art" style="background:linear-gradient(160deg, ${def.color}44, ${def.color}11)">
-      <span class="card-icon">${def.icon}</span>
+      <span class="card-icon" style="color:${def.color}">${icon(cardIcon(def))}</span>
       <span class="card-stars">${starDots(star, CARD_CONFIG.starMax)}</span>
     </div>
     <div class="card-name">${def.name}</div>
@@ -343,7 +381,7 @@ function refreshCardCell(cell: HTMLElement): void {
     <div class="card-actions">
       <button class="card-equip">${equipped ? '卸下' : '裝備'}</button>
       <button class="card-star" ${canStar && save.coins >= (cost as number) ? '' : 'disabled'}>${
-        canStar ? `升星 🪙${formatNumber(cost as number)}` : 'MAX'
+        canStar ? `升星 ${icon('coin')}${formatNumber(cost as number)}` : 'MAX'
       }</button>
     </div>`;
   (cell.querySelector('.card-equip') as HTMLButtonElement).addEventListener('click', () => {
@@ -390,7 +428,7 @@ function refreshCards(): void {
     if (id) {
       const def = cardById(id)!;
       slot.style.borderColor = def.color;
-      slot.innerHTML = `<span class="slot-icon">${def.icon}</span><span class="slot-name">${def.name} ${starDots(
+      slot.innerHTML = `<span class="slot-icon" style="color:${def.color}">${icon(cardIcon(def))}</span><span class="slot-name">${def.name} ${starDots(
         cardStar(save, id),
         CARD_CONFIG.starMax
       )}</span>`;
@@ -408,7 +446,7 @@ function refreshCards(): void {
     const unlock = document.createElement('button');
     unlock.className = 'slot-unlock';
     unlock.disabled = save.coins < cost;
-    unlock.innerHTML = `🔓 解鎖新槽位<br>🪙${formatNumber(cost)}`;
+    unlock.innerHTML = `${icon('lock')} 解鎖新槽位<br>${icon('coin')}${formatNumber(cost)}`;
     unlock.addEventListener('click', () => {
       if (buySlot(save)) {
         saveProgress();
@@ -464,11 +502,11 @@ function refreshUltimates(): void {
       cta = `<button disabled>MAX</button>`;
     } else {
       const price = ultimateUpgradePrice(save, def.id)!;
-      cta = `<button ${save.coins >= price ? '' : 'disabled'}>升級<br>🪙${formatNumber(price)}</button>`;
+      cta = `<button ${save.coins >= price ? '' : 'disabled'}>升級<br>${icon('coin')}${formatNumber(price)}</button>`;
     }
 
     row.innerHTML = `
-      <div class="ult-icon" style="background:linear-gradient(160deg, ${def.color}55, ${def.color}11)">${def.icon}</div>
+      <div class="ult-icon" style="color:${def.color};background:linear-gradient(160deg, ${def.color}55, ${def.color}11)">${icon('ultimate')}</div>
       <div class="ult-body">
         <div class="ult-name">${def.name}<span class="lv">${owned ? `Lv.${level}` : '未解鎖'}</span></div>
         <div class="ult-sub">${describeUltimate(def, Math.max(level, 1))}</div>
@@ -535,11 +573,11 @@ function refreshResearch(): void {
       ctaHtml = `<button disabled>MAX</button>`;
     } else {
       const afford = !busy && save.coins >= cost;
-      ctaHtml = `<button class="start" ${afford ? '' : 'disabled'}>開始<br>🪙${formatNumber(cost)}</button>`;
+      ctaHtml = `<button class="start" ${afford ? '' : 'disabled'}>開始<br>${icon('coin')}${formatNumber(cost)}</button>`;
     }
 
     row.innerHTML = `
-      <div class="research-icon" style="background:linear-gradient(160deg, ${def.color}44, ${def.color}11)">${def.icon}</div>
+      <div class="research-icon" style="color:${def.color};background:linear-gradient(160deg, ${def.color}44, ${def.color}11)">${icon(def.stat.includes('Health') || def.stat === 'healthRegen' ? 'defense' : def.stat.includes('coin') || def.stat.includes('cash') ? 'economy' : 'research')}</div>
       <div class="research-body">
         <div class="research-name">${def.name}<span class="lv">Lv.${level}${maxed ? ' MAX' : ''}</span></div>
         <div class="research-sub">${curText} · 下一級 ${nextGain} · ⏱ ${fmtDuration(timeSec)}</div>
@@ -589,10 +627,10 @@ const battleButtons: UpgradeButton[] = IN_RUN_UPGRADES.map((def) =>
   })
 );
 
-const TABS: Array<{ id: UpgradeCategory; name: string }> = [
-  { id: 'attack', name: '⚔️ 攻擊' },
-  { id: 'defense', name: '🛡️ 防禦' },
-  { id: 'economy', name: '💰 經濟' },
+const TABS: Array<{ id: UpgradeCategory; name: string; icon: IconName }> = [
+  { id: 'attack', name: '攻擊', icon: 'attack' },
+  { id: 'defense', name: '防禦', icon: 'defense' },
+  { id: 'economy', name: '經濟', icon: 'economy' },
 ];
 
 function buildTabs(): void {
@@ -600,7 +638,7 @@ function buildTabs(): void {
   tabs.innerHTML = '';
   for (const t of TABS) {
     const b = document.createElement('button');
-    b.textContent = t.name;
+    b.innerHTML = `${icon(t.icon)}<span>${t.name}</span>`;
     b.dataset.tab = t.id;
     b.classList.toggle('active', t.id === activeTab);
     b.addEventListener('click', () => {
@@ -637,18 +675,19 @@ let dispCoin = 0;
 let dispHp = 0;
 
 function buildBattleTopbar(): void {
+  topbar.classList.add('battle-hud');
   topbar.innerHTML = `
-    <div class="stat"><span class="label">波次</span><span class="value" data-wave></span></div>
-    <div class="stat"><span class="label">戰區</span><span class="value" data-zone></span></div>
-    <div class="stat"><span class="label">現金</span><span class="value cash" data-cash></span></div>
-    <div class="stat"><span class="label">本場金幣</span><span class="value coin" data-coin></span></div>
-    <div class="stat"><span class="label">血量</span><span class="value" data-hp></span></div>
+    <div class="stat stat-primary"><span class="label">${icon('wave')}波次</span><span class="value" data-wave></span></div>
+    <div class="stat"><span class="label">${icon('zone')}戰區</span><span class="value" data-zone></span></div>
+    <div class="stat"><span class="label">${icon('cash')}現金</span><span class="value cash" data-cash></span></div>
+    <div class="stat"><span class="label">${icon('coin')}金幣</span><span class="value coin" data-coin></span></div>
+    <div class="stat hp-stat"><span class="label">${icon('health')}核心</span><span class="value" data-hp></span><span class="hp-track"><span class="hp-fill"></span></span><span class="status-pips" data-status></span></div>
     <div class="spacer"></div>
-    <button id="speed-btn" class="speed-btn">x${speed}</button>`;
+    <button id="speed-btn" class="speed-btn">${icon('speed')}<span>x${speed}</span></button>`;
   const speedBtn = $('#speed-btn') as HTMLButtonElement;
   speedBtn.addEventListener('click', () => {
     speed = speed >= 3 ? 1 : speed + 1;
-    speedBtn.textContent = `x${speed}`;
+    (speedBtn.querySelector('span') as HTMLElement).textContent = `x${speed}`;
   });
   hud = {
     wave: topbar.querySelector('[data-wave]') as HTMLElement,
@@ -674,17 +713,27 @@ function updateBattleHud(dt: number): void {
     hud.zone.style.color = zone.accent;
   }
   hud.cash.textContent = `$ ${formatNumber(dispCash)}`;
-  hud.coin.textContent = `🪙 ${formatNumber(dispCoin)}`;
+  hud.coin.textContent = formatNumber(dispCoin);
   hud.hp.textContent = `${formatNumber(Math.max(Math.ceil(dispHp), 0))}/${formatNumber(sim.stats.maxHealth)}`;
   const ratio = sim.towerHp / sim.stats.maxHealth;
   hud.hp.style.color = ratio > 0.35 ? '' : '#f85149';
+  const hpFill = topbar.querySelector('.hp-fill') as HTMLElement;
+  hpFill.style.width = `${Math.max(0, ratio) * 100}%`;
+  hpFill.style.background = ratio > 0.35 ? '#4fe08a' : '#f85149';
+  const status = topbar.querySelector('[data-status]') as HTMLElement;
+  status.innerHTML = sim.perks.includes('incendiary') ? '<span style="color:#ff7a3d;background:#ff7a3d"></span>' : '';
+  if (sim.perks.includes('cryoRounds')) status.innerHTML += '<span style="color:#72d8ff;background:#72d8ff"></span>';
 }
 
 /** 只刷新升級按鈕（成本/買得起狀態），與頂欄滾動分開 */
 function refreshBattleButtons(): void {
   if (!sim) return;
   for (const btn of battleButtons) {
-    refreshUpgradeButton(btn, sim.inRunLevels[btn.def.id] ?? 0, sim.cash, 'cash', sim.stats[btn.def.stat]);
+    const nextLevels = { ...sim.inRunLevels, [btn.def.id]: (sim.inRunLevels[btn.def.id] ?? 0) + 1 };
+    const next = computeStats(sim.workshopLevels, nextLevels, sim.researchLevels);
+    applyPerks(next, sim.perks);
+    applyCardStatMods(next, sim.mods.statMods);
+    refreshUpgradeButton(btn, sim.inRunLevels[btn.def.id] ?? 0, sim.cash, 'cash', sim.stats[btn.def.stat], next[btn.def.stat]);
   }
 }
 
@@ -722,8 +771,11 @@ function showPerkChoice(wave: number, choices: string[]): void {
     const def = perkById(id);
     if (!def) continue;
     const btn = document.createElement('button');
-    btn.className = def.risky ? 'perk-card risky' : 'perk-card';
-    btn.innerHTML = `<span class="perk-name"></span><span class="perk-desc"></span>`;
+    const school = perkSchool(def);
+    const visualIcon: IconName = school === 'fire' ? 'fire' : school === 'frost' ? 'frost' : school === 'risk' ? 'risk' : 'perk';
+    btn.className = `perk-card school-${school}${def.risky ? ' risky' : ''}`;
+    const prerequisite = def.prerequisite ? perkById(def.prerequisite)?.name : null;
+    btn.innerHTML = `<span class="perk-art">${icon(visualIcon)}</span><span class="perk-name"></span><span class="perk-rarity">${perkRarity(def)}</span><span class="perk-desc"></span><span class="perk-link">${prerequisite ? `聯動：${prerequisite}` : school === 'fire' ? '燃燒流核心' : school === 'frost' ? '冰凍流核心' : '即時強化'}</span>`;
     (btn.querySelector('.perk-name') as HTMLElement).textContent = def.name;
     (btn.querySelector('.perk-desc') as HTMLElement).textContent = def.desc;
     btn.addEventListener('click', () => {
@@ -980,7 +1032,7 @@ function buildUltBar(): void {
     btn.className = 'ult-btn';
     btn.dataset.ult = u.id;
     btn.style.setProperty('--ult-color', u.color);
-    btn.innerHTML = `<span class="glyph">${def?.icon ?? '★'}</span><div class="cool-mask"></div><div class="cool-num"></div>`;
+    btn.innerHTML = `<span class="glyph">${icon(u.kind === 'coinBuff' ? 'coin' : 'ultimate')}</span><div class="cool-mask"></div><div class="cool-num"></div>`;
     btn.addEventListener('click', () => {
       if (sim && activateUltimate(sim, u.id)) updateUltBar();
     });
