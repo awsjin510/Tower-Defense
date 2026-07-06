@@ -19,6 +19,13 @@ export interface ZoneDef {
   grid: string;
   /** 場地環境光色 */
   glow: string;
+  mechanic: {
+    kind: 'split' | 'frost' | 'magma' | 'void';
+    name: string;
+    desc: string;
+    interval?: number;
+    value: number;
+  };
   mods: ZoneMods;
 }
 

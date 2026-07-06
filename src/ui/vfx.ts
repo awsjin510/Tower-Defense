@@ -171,6 +171,16 @@ export class Vfx {
           this.chains.push({ x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, crit: e.crit, life: 0.22, maxLife: 0.22, jitter });
           break;
         }
+        case 'status': {
+          const labels = { burn: ['燃燒', '#ff7a3d'], frost: ['冰霜', '#72d8ff'], freeze: ['凍結!', '#b9efff'], empower: ['共鳴', '#c58aff'] } as const;
+          const [text, color] = labels[e.status];
+          this.texts.push({ x: e.x, y: e.y - 16, vy: -28, text, color, size: e.status === 'freeze' ? 15 : 11, life: 0.55, maxLife: 0.55 });
+          break;
+        }
+        case 'zonePulse':
+          this.shocks.push({ life: 0.75, maxLife: 0.75, color: e.color });
+          this.shake = Math.min(this.shake + 4, 10);
+          break;
         // 'wave' / 'perkOffer' 由 UI 另行處理
       }
     }

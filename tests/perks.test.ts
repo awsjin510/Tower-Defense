@@ -19,7 +19,7 @@ describe('perks', () => {
     expect(PERKS.some((p) => p.risky)).toBe(true);
     expect(new Set(PERKS.map((p) => p.id)).size).toBe(PERKS.length);
     for (const p of PERKS) {
-      expect(p.mods.length).toBeGreaterThan(0);
+      expect(p.mods.length > 0 || Boolean(p.rule)).toBe(true);
       for (const m of p.mods) expect(Boolean(m.mult) || Boolean(m.add)).toBe(true);
     }
   });
@@ -41,6 +41,14 @@ describe('perks', () => {
     const rest = rollPerkChoices(almostAll, rng);
     expect(rest).toEqual([PERKS[PERKS.length - 1].id]);
     expect(rollPerkChoices(PERKS.map((p) => p.id), rng)).toEqual([]);
+  });
+
+  it('流派進階 Perk 只在取得前置核心後進入選池', () => {
+    const withoutCore = rollPerkChoices(PERKS.filter((p) => !p.prerequisite).map((p) => p.id).filter((id) => id !== 'incendiary'), mulberry32(1), 99);
+    expect(withoutCore).not.toContain('wildfire');
+    const withCore = rollPerkChoices(PERKS.filter((p) => !p.prerequisite).map((p) => p.id), mulberry32(1), 99);
+    expect(withCore).toContain('wildfire');
+    expect(withCore).toContain('volatileFuel');
   });
 
   it('applyPerks 乘法與加法正確、暴擊率夾在 0.8', () => {
@@ -79,7 +87,7 @@ describe('perks', () => {
     expect(s.pendingPerks).toBeNull();
     // 至少有一個屬性改變了
     const def = perkById(picked)!;
-    expect(def.mods.some((m) => s.stats[m.stat] !== before[m.stat])).toBe(true);
+    expect(Boolean(def.rule) || def.mods.some((m) => s.stats[m.stat] !== before[m.stat])).toBe(true);
 
     // 恢復推進
     step(s, TICK_DT);

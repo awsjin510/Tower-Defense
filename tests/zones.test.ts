@@ -11,6 +11,9 @@ describe('zones', () => {
     for (const z of ZONES) {
       expect(z.name.length).toBeGreaterThan(0);
       expect(z.accent).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(z.mechanic.name.length).toBeGreaterThan(0);
+      expect(z.mechanic.desc.length).toBeGreaterThan(0);
+      expect(z.mechanic.value).toBeGreaterThan(0);
       for (const v of Object.values(z.mods)) expect(v).toBeGreaterThan(0);
     }
   });

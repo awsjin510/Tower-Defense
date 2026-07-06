@@ -333,6 +333,17 @@ export function render(
       ctx.arc(e.x, e.y, e.radius + 7 + Math.sin(s.time * 4) * 2, 0, Math.PI * 2);
       ctx.stroke();
     }
+    // 狀態辨識環：燃燒橘、冰霜藍、凍結實線、虛空強化紫。
+    if (e.burnTime > 0 || e.frostStacks > 0 || e.frozenTime > 0 || e.zoneEmpower > 1) {
+      const statusColor = e.frozenTime > 0 ? '#b9efff' : e.burnTime > 0 ? '#ff7a3d' : e.zoneEmpower > 1 ? '#c58aff' : '#72d8ff';
+      ctx.strokeStyle = statusColor;
+      ctx.lineWidth = e.frozenTime > 0 ? 3 : 2;
+      if (e.frozenTime <= 0) ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.radius + 4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     const fl = vfx.flash.get(e.id);
     if (fl) {
       ctx.globalAlpha = Math.min(fl / 0.12, 1) * 0.85;
@@ -421,6 +432,15 @@ export function render(
   ctx.beginPath();
   ctx.arc(0, 0, TOWER_RADIUS + 9, -Math.PI / 2, -Math.PI / 2 + hpRatio * Math.PI * 2);
   ctx.stroke();
+
+  // 寒冰戰區：外圈顯示攻速侵蝕程度，擊殺會讓它回退。
+  if (zone.mechanic.kind === 'frost' && s.zoneMeter > 0) {
+    ctx.strokeStyle = 'rgba(114,216,255,0.8)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, TOWER_RADIUS + 15, -Math.PI / 2, -Math.PI / 2 + (s.zoneMeter / zone.mechanic.value) * Math.PI * 2);
+    ctx.stroke();
+  }
 
   // 傷害數字（世界座標，字級需除以 scale 保持螢幕大小一致）
   ctx.textAlign = 'center';
