@@ -1,7 +1,7 @@
-import { activateUltimate, buyInRunUpgrade, choosePerk, newRun, step, TICK_DT, type SimState } from './core/sim';
+import { activateUltimate, buyInRunUpgrade, choosePerk, currentRerollCost, newRun, rerollPerks, skipPerks, step, TICK_DT, type SimState } from './core/sim';
 import { IN_RUN_UPGRADES, WORKSHOP_UPGRADES, computeStats } from './core/stats';
 import { formatNumber, isMaxed, upgradeCost } from './core/economy';
-import { applyPerks, perkById, perkRarity, perkSchool } from './core/perks';
+import { applyPerks, perkById, perkRarity, perkSchool, perkStacks } from './core/perks';
 import { offlineCoins } from './core/offline';
 import { isZoneEntryWave, zoneForWave } from './core/zones';
 import { CARDS, CARD_CONFIG, applyCardStatMods, buildRunMods, cardById, describeCard, type CardDef } from './core/cards';
@@ -806,7 +806,16 @@ function showWaveBanner(wave: number, boss: boolean): void {
 
 const perkOverlay = $('#perk-overlay');
 
-function showPerkChoice(wave: number, choices: string[]): void {
+function schoolLink(school: string, prerequisite: string | null): string {
+  if (prerequisite) return `聯動：${prerequisite}`;
+  if (school === 'fire') return '燃燒流核心';
+  if (school === 'frost') return '冰凍流核心';
+  if (school === 'trigger') return '觸發效果';
+  if (school === 'risk') return '高風險';
+  return '即時強化';
+}
+
+function renderPerkCards(wave: number, choices: string[]): void {
   $('#perk-sub').textContent = `Wave ${wave} 獎勵 · 本場有效`;
   const cards = $('#perk-cards');
   cards.innerHTML = '';
@@ -816,21 +825,62 @@ function showPerkChoice(wave: number, choices: string[]): void {
     const btn = document.createElement('button');
     const school = perkSchool(def);
     const visualIcon: IconName = school === 'fire' ? 'fire' : school === 'frost' ? 'frost' : school === 'risk' ? 'risk' : 'perk';
-    btn.className = `perk-card school-${school}${def.risky ? ' risky' : ''}`;
-    const prerequisite = def.prerequisite ? perkById(def.prerequisite)?.name : null;
-    btn.innerHTML = `<span class="perk-art">${icon(visualIcon)}</span><span class="perk-name"></span><span class="perk-rarity">${perkRarity(def)}</span><span class="perk-desc"></span><span class="perk-link">${prerequisite ? `聯動：${prerequisite}` : school === 'fire' ? '燃燒流核心' : school === 'frost' ? '冰凍流核心' : '即時強化'}</span>`;
+    const owned = sim ? perkStacks(sim.perks, id) : 0;
+    btn.className = `perk-card school-${school} rar-${def.rarity}${def.risky ? ' risky' : ''}`;
+    const prerequisite = def.prerequisite ? perkById(def.prerequisite)?.name ?? null : null;
+    const stackBadge = owned > 0 && def.stackable ? `<span class="perk-stack">Lv ${owned} → ${owned + 1}</span>` : '';
+    btn.innerHTML =
+      `<span class="perk-art">${icon(visualIcon)}</span>` +
+      `<span class="perk-name"></span>` +
+      `<span class="perk-rarity">${perkRarity(def)}</span>` +
+      `<span class="perk-desc"></span>` +
+      `<span class="perk-link">${schoolLink(school, prerequisite)}</span>` +
+      stackBadge;
     (btn.querySelector('.perk-name') as HTMLElement).textContent = def.name;
     (btn.querySelector('.perk-desc') as HTMLElement).textContent = def.desc;
     btn.addEventListener('click', () => {
       if (sim && choosePerk(sim, id)) {
+        Sound.play('buy');
         perkOverlay.classList.remove('active');
         refreshBattleButtons();
       }
     });
     cards.appendChild(btn);
   }
+  updatePerkFooter();
+}
+
+/** 重骰／跳過按鈕狀態（花費、可否負擔） */
+function updatePerkFooter(): void {
+  if (!sim) return;
+  const cost = currentRerollCost(sim);
+  const rerollBtn = $('#perk-reroll') as HTMLButtonElement;
+  const skipBtn = $('#perk-skip') as HTMLButtonElement;
+  rerollBtn.disabled = sim.cash < cost;
+  rerollBtn.innerHTML = `${icon('coin')} 重骰 <b>$${formatNumber(cost)}</b>`;
+  skipBtn.textContent = '跳過領錢';
+}
+
+function showPerkChoice(wave: number, choices: string[]): void {
+  renderPerkCards(wave, choices);
   perkOverlay.classList.add('active');
 }
+
+$('#perk-reroll').addEventListener('click', () => {
+  if (sim && rerollPerks(sim)) {
+    Sound.play('click');
+    renderPerkCards(sim.wave, sim.pendingPerks ?? []);
+    refreshBattleButtons();
+  }
+});
+$('#perk-skip').addEventListener('click', () => {
+  if (sim && sim.pendingPerks) {
+    const reward = skipPerks(sim);
+    Sound.play(reward > 0 ? 'coin' : 'click');
+    perkOverlay.classList.remove('active');
+    refreshBattleButtons();
+  }
+});
 
 // ---------- 離線收益（開啟遊戲時結算一次） ----------
 
@@ -1338,7 +1388,7 @@ function frame(now: number): void {
         if (e.type === 'perkOffer') showPerkChoice(e.wave, e.choices);
         else if (e.type === 'fire') Sound.play('fire');
         else if (e.type === 'hit') Sound.play(e.crit ? 'crit' : 'hit');
-        else if (e.type === 'kill') Sound.play('kill');
+        else if (e.type === 'kill') Sound.play(e.typeId === 'coin' ? 'coin' : 'kill');
         else if (e.type === 'ultActivate') { Sound.play('ult'); runUltCasts++; }
         else if (e.type === 'ultNuke') { Sound.play('nuke'); runUltCasts++; }
       }
