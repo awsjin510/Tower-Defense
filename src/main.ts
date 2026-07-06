@@ -1129,7 +1129,25 @@ function startBattle(): void {
   buildBattleGrid();
   buildUltBar();
   showWaveBanner(1, false);
+  // 排行榜：登入且雲端就緒時，向後端開一場 run session（供結算時提交防作弊）
+  activeRunId = null;
+  runWallStart = Date.now();
+  if (cloudReady && cloudUser && cloudModule) {
+    const user = cloudUser;
+    cloudModule
+      .startRun(user)
+      .then((id) => {
+        activeRunId = id;
+      })
+      .catch(() => {
+        activeRunId = null;
+      });
+  }
 }
+
+// 排行榜提交用：本場的後端 run id 與真實開始時間（牆鐘）
+let activeRunId: string | null = null;
+let runWallStart = 0;
 
 /** 數字滾動：dur 秒內從 0 補到 target */
 function rollNumber(el: HTMLElement, target: number, dur: number, prefix: string): void {
@@ -1172,7 +1190,64 @@ function showResults(s: SimState): void {
   rollNumber($('#results-rows').querySelector('[data-coinroll]') as HTMLElement, s.coinsEarned, 0.8, '+🪙 ');
   Sound.play('gameover');
   if (s.coinsEarned >= 1) setTimeout(() => Sound.coinCascade(), 350);
+
+  // 排行榜提交：把 Tier 編碼進分數（tier*100000+wave），讓排名兼顧難度與深度
+  const durationMs = Date.now() - runWallStart;
+  if (cloudReady && cloudUser && cloudModule && activeRunId && durationMs >= 1000) {
+    const score = s.tier * 100000 + s.wave;
+    cloudModule
+      .submitRun(cloudUser, { runId: activeRunId, wave: score, kills: s.kills, durationMs })
+      .catch(() => undefined);
+  }
+  activeRunId = null;
 }
+
+// ---------- 排行榜 ----------
+
+const boardModal = $('#board-modal');
+
+/** 把編碼分數還原成 Tier 與波次（舊/純波次資料 < 100000 視為 T1） */
+function decodeScore(score: number): { tier: number; wave: number } {
+  if (score >= 100000) return { tier: Math.floor(score / 100000), wave: score % 100000 };
+  return { tier: 1, wave: score };
+}
+
+async function openLeaderboard(): Promise<void> {
+  boardModal.classList.add('active');
+  const list = $('#board-list');
+  if (!cloudReady || !cloudModule) {
+    list.innerHTML = '<div class="board-note">雲端排行榜尚未設定。<br>設定 Firebase + Cloudflare 後即可上傳成績、與全球玩家較量最高波次。</div>';
+    return;
+  }
+  list.innerHTML = '<div class="board-note">載入中…</div>';
+  try {
+    const entries = await cloudModule.fetchLeaderboard();
+    if (!entries.length) {
+      list.innerHTML = '<div class="board-note">還沒有人上榜——登入後打一場，成為第一名！</div>';
+      return;
+    }
+    list.innerHTML = '';
+    entries.forEach((e, i) => {
+      const { tier, wave } = decodeScore(e.bestWave);
+      const row = document.createElement('div');
+      row.className = 'board-row' + (i < 3 ? ` top${i + 1}` : '');
+      row.innerHTML = `<span class="rank">${i + 1}</span><span class="who"></span><span class="score">T${tier}·W${wave}</span>`;
+      (row.querySelector('.who') as HTMLElement).textContent = e.playerName || '匿名';
+      list.appendChild(row);
+    });
+  } catch {
+    list.innerHTML = '<div class="board-note">排行榜載入失敗，請稍後再試。</div>';
+  }
+}
+
+$('#board-btn').addEventListener('click', () => {
+  Sound.play('click');
+  void openLeaderboard();
+});
+$('#board-close').addEventListener('click', () => boardModal.classList.remove('active'));
+boardModal.addEventListener('click', (e) => {
+  if (e.target === boardModal) boardModal.classList.remove('active');
+});
 
 // ---------- 主迴圈：固定 tick 模擬 + 每幀渲染 ----------
 

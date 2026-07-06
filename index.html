@@ -45,8 +45,9 @@
       }
       #auth-btn:disabled { opacity: 0.5; }
       #account-btn { border-color: #2b6cb0; }
-      #sound-btn { padding: 4px 7px; font-size: 13px; line-height: 1; }
+      #sound-btn, #board-btn { padding: 4px 7px; font-size: 13px; line-height: 1; }
       #sound-btn.muted { opacity: 0.5; }
+      #board-btn { border-color: #b8860b; }
 
       #topbar {
         display: flex; align-items: center; gap: 12px;
@@ -349,11 +350,22 @@
       }
 
       /* 帳戶面板（霓虹風，參考 The Tower） */
-      #account-modal {
+      #account-modal, #board-modal {
         position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
         background: rgba(1, 4, 9, 0.82); z-index: 13; padding: 16px;
       }
-      #account-modal.active { display: flex; }
+      #account-modal.active, #board-modal.active { display: flex; }
+      #board-modal .account-card { max-width: 380px; width: 100%; }
+      #board-list { max-height: 56vh; overflow-y: auto; margin: 8px 0; }
+      .board-row {
+        display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px;
+        border: 1px solid var(--brd); margin-bottom: 6px; background: rgba(20,28,44,0.5);
+      }
+      .board-row .rank { font-family: var(--font-num); font-weight: 800; color: #8b949e; width: 30px; text-align: center; }
+      .board-row.top1 .rank { color: #ffd24a; } .board-row.top2 .rank { color: #cfd8e3; } .board-row.top3 .rank { color: #e0985c; }
+      .board-row .who { flex: 1; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .board-row .score { font-family: var(--font-num); font-weight: 800; color: #ff9d5c; }
+      .board-note { color: #8b949e; font-size: 13px; text-align: center; padding: 20px 8px; line-height: 1.6; }
       #account-modal .account-card {
         background: #0d1524; border: 1px solid #2b6cb0; border-radius: 14px;
         box-shadow: 0 0 22px rgba(56, 189, 248, 0.25), inset 0 0 20px rgba(56, 189, 248, 0.05);
@@ -547,7 +559,7 @@
   </head>
   <body>
     <div id="app">
-      <div id="authbar"><span id="auth-status">本機存檔</span><button id="sound-btn" type="button" title="音效開關">🔊</button><button id="account-btn" type="button">帳戶</button><button id="auth-btn" type="button">Google 登入</button></div>
+      <div id="authbar"><span id="auth-status">本機存檔</span><button id="sound-btn" type="button" title="音效開關">🔊</button><button id="board-btn" type="button" title="排行榜">🏆</button><button id="account-btn" type="button">帳戶</button><button id="auth-btn" type="button">Google 登入</button></div>
       <header id="topbar"></header>
 
       <div id="workshop-screen" class="screen active">
@@ -653,6 +665,15 @@
           <div id="account-linked"></div>
           <div id="account-actions"></div>
           <button id="account-close" type="button">關閉</button>
+        </div>
+      </div>
+
+      <div id="board-modal">
+        <div class="account-card">
+          <h2>🏆 全球排行榜</h2>
+          <div class="account-linked-label" id="board-sub">最高波次</div>
+          <div id="board-list"></div>
+          <button id="board-close" type="button">關閉</button>
         </div>
       </div>
     </div>

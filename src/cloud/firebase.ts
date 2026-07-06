@@ -147,3 +147,17 @@ export async function startRun(user: User): Promise<string> {
   if (!response.ok) throw new Error(`Run start failed: ${response.status}`);
   return ((await response.json()) as { runId: string }).runId;
 }
+
+export interface LeaderboardEntry {
+  playerName: string;
+  bestWave: number;
+  totalRuns: number;
+}
+
+/** 取得全球排行榜（無需登入；季賽由後端決定） */
+export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
+  if (!apiBase) throw new Error('Cloudflare API 尚未設定');
+  const response = await fetch(`${apiBase}/v1/leaderboard`);
+  if (!response.ok) throw new Error(`Leaderboard fetch failed: ${response.status}`);
+  return ((await response.json()) as { entries: LeaderboardEntry[] }).entries ?? [];
+}
