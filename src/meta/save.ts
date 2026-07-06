@@ -1,7 +1,14 @@
 import type { Levels } from '../core/stats';
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 9;
 const SAVE_KEY = 'tower-defense-save';
+
+/** 每日任務進度 */
+export interface DailyMission {
+  id: string;
+  progress: number;
+  claimed: boolean;
+}
 
 /** 進行中的研究：以真實時間計，離線也在推進 */
 export interface ActiveResearch {
@@ -37,6 +44,16 @@ export interface SaveData {
   activeResearch: ActiveResearch | null;
   /** 終極武器等級：id → 等級（0 未解鎖、1+ 可用）（v7 起） */
   ultimates: Record<string, number>;
+  /** 目前選擇的 Tier（v8 起） */
+  tier: number;
+  /** 已解鎖的最高 Tier（v8 起） */
+  tierMax: number;
+  /** 各 Tier 的最高波紀錄：tier → wave（v8 起） */
+  tierBestWave: Record<string, number>;
+  /** 每日任務所屬日期（YYYY-MM-DD，本機時區）（v9 起） */
+  dailyDate: string;
+  /** 當日任務進度（v9 起） */
+  dailyMissions: DailyMission[];
 }
 
 export function defaultSave(): SaveData {
@@ -57,6 +74,11 @@ export function defaultSave(): SaveData {
     researchLevels: {},
     activeResearch: null,
     ultimates: {},
+    tier: 1,
+    tierMax: 1,
+    tierBestWave: {},
+    dailyDate: '',
+    dailyMissions: [],
   };
 }
 
@@ -86,6 +108,8 @@ export function migrate(raw: unknown): SaveData {
   // v4 → v5：cards / equipped / cardSlots 由 defaultSave 補預設（無卡、2 槽）。
   // v5 → v6：researchLevels / activeResearch 由 defaultSave 補預設（無研究、閒置）。
   // v6 → v7：ultimates 由 defaultSave 補 {}（無終極武器）。
+  // v7 → v8：tier / tierMax / tierBestWave 由 defaultSave 補預設（T1）。
+  // v8 → v9：dailyDate / dailyMissions 由 defaultSave 補空，首次開啟時產生當日任務。
   data.version = SAVE_VERSION;
   return data;
 }
@@ -104,6 +128,8 @@ export function applySave(target: SaveData, source: SaveData): void {
     researchLevels: { ...(source.researchLevels ?? {}) },
     activeResearch: source.activeResearch ? { ...source.activeResearch } : null,
     ultimates: { ...(source.ultimates ?? {}) },
+    tierBestWave: { ...(source.tierBestWave ?? {}) },
+    dailyMissions: (source.dailyMissions ?? []).map((m) => ({ ...m })),
   });
 }
 

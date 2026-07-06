@@ -44,6 +44,11 @@ import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
 import { render } from './ui/renderer';
 import { Vfx } from './ui/vfx';
 import { icon, type IconName } from './ui/icons';
+import { Sound } from './ui/sound';
+import { TIER_CONFIG, tierMods } from './core/tiers';
+import { selectTier, settleTier, tierBest } from './meta/tiers';
+import { isMissionComplete, missionById } from './core/missions';
+import { applyRunToMissions, claimMission, claimableCount, ensureDaily } from './meta/missions';
 import type { User } from 'firebase/auth';
 
 type CloudModule = typeof import('./cloud/firebase');
@@ -60,6 +65,8 @@ const offlineResearch = collectResearch(save, Date.now());
 if (offlineResearch) store.save(save);
 // 終極武器：依歷史最高波次補齊里程碑解鎖（由 bestWave 推導，不需強制寫檔）
 syncUltimateUnlocks(save);
+// 每日任務：跨日則重置為當天任務（由日期推導，載入不強制寫檔）
+ensureDaily(save);
 let cloudUser: User | null = null;
 let cloudModule: CloudModule | null = null;
 let cloudReady = false;
@@ -274,6 +281,7 @@ function refreshUpgradeButton(
 const workshopButtons: UpgradeButton[] = WORKSHOP_UPGRADES.map((def) =>
   makeUpgradeButton(def, () => {
     if (buyWorkshopUpgrade(save, def.id)) {
+      Sound.play('buy');
       saveProgress();
       refreshWorkshop();
     }
@@ -293,7 +301,39 @@ function refreshWorkshop(): void {
   for (const btn of workshopButtons) {
     refreshUpgradeButton(btn, save.workshopLevels[btn.def.id] ?? 0, save.coins, 'coin', startStats[btn.def.stat], startStats[btn.def.stat] + btn.def.valuePerLevel);
   }
+  refreshTierSelector();
 }
+
+// ---------- Tier 選擇器 ----------
+
+function refreshTierSelector(): void {
+  const tm = tierMods(save.tier);
+  $('#tier-name').textContent = `Tier ${save.tier}`;
+  const best = tierBest(save, save.tier);
+  const bestText = best > 0 ? `本 Tier 最高 W${best}` : '尚未挑戰';
+  const unlockText =
+    save.tier === save.tierMax && save.tierMax < TIER_CONFIG.maxTier
+      ? ` · 到 W${TIER_CONFIG.unlockWave} 解鎖 T${save.tierMax + 1}`
+      : '';
+  $('#tier-detail').textContent = `敵人 HP ×${tm.hp.toFixed(1)}、獎勵 ×${tm.reward.toFixed(1)} · ${bestText}${unlockText}`;
+  ($('#tier-prev') as HTMLButtonElement).disabled = save.tier <= 1;
+  ($('#tier-next') as HTMLButtonElement).disabled = save.tier >= save.tierMax;
+}
+
+$('#tier-prev').addEventListener('click', () => {
+  if (selectTier(save, save.tier - 1)) {
+    Sound.play('click');
+    saveProgress();
+    refreshTierSelector();
+  }
+});
+$('#tier-next').addEventListener('click', () => {
+  if (selectTier(save, save.tier + 1)) {
+    Sound.play('click');
+    saveProgress();
+    refreshTierSelector();
+  }
+});
 
 const cardsScreen = $('#cards-screen');
 const researchScreen = $('#research-screen');
@@ -623,7 +663,10 @@ setInterval(tickResearch, 1000);
 
 const battleButtons: UpgradeButton[] = IN_RUN_UPGRADES.map((def) =>
   makeUpgradeButton(def, () => {
-    if (sim && buyInRunUpgrade(sim, def.id)) refreshBattleButtons();
+    if (sim && buyInRunUpgrade(sim, def.id)) {
+      Sound.play('buy');
+      refreshBattleButtons();
+    }
   })
 );
 
@@ -706,7 +749,7 @@ function updateBattleHud(dt: number): void {
   dispCash += (sim.cash - dispCash) * k;
   dispCoin += (sim.coinsEarned - dispCoin) * k;
   dispHp += (sim.towerHp - dispHp) * k;
-  hud.wave.textContent = String(sim.wave);
+  hud.wave.textContent = sim.tier > 1 ? `T${sim.tier}·${sim.wave}` : String(sim.wave);
   const zone = zoneForWave(sim.wave);
   if (hud.zone.textContent !== zone.name) {
     hud.zone.textContent = zone.name;
@@ -1069,7 +1112,8 @@ function startBattle(): void {
     (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
     mods,
     save.researchLevels,
-    resolvedUltimates(save)
+    resolvedUltimates(save),
+    save.tier
   );
   resultsShown = false;
   perkOverlay.classList.remove('active');
@@ -1089,7 +1133,28 @@ function startBattle(): void {
   buildBattleGrid();
   buildUltBar();
   showWaveBanner(1, false);
+  // 排行榜：登入且雲端就緒時，向後端開一場 run session（供結算時提交防作弊）
+  activeRunId = null;
+  runWallStart = Date.now();
+  runUltCasts = 0;
+  if (cloudReady && cloudUser && cloudModule) {
+    const user = cloudUser;
+    cloudModule
+      .startRun(user)
+      .then((id) => {
+        activeRunId = id;
+      })
+      .catch(() => {
+        activeRunId = null;
+      });
+  }
 }
+
+// 排行榜提交用：本場的後端 run id 與真實開始時間（牆鐘）
+let activeRunId: string | null = null;
+let runWallStart = 0;
+// 每日任務用：本場終極武器施放次數
+let runUltCasts = 0;
 
 /** 數字滾動：dur 秒內從 0 補到 target */
 function rollNumber(el: HTMLElement, target: number, dur: number, prefix: string): void {
@@ -1106,9 +1171,14 @@ function rollNumber(el: HTMLElement, target: number, dur: number, prefix: string
 function showResults(s: SimState): void {
   const isRecord = s.wave > save.bestWave;
   settleRun(save, { wave: s.wave, coinsEarned: s.coinsEarned, kills: s.kills, timeSec: s.time });
-  // 這一場刷新紀錄後可能解鎖新卡片 / 終極武器
+  // 這一場刷新紀錄後可能解鎖新卡片 / 終極武器 / Tier
   const newCards = syncCardUnlocks(save);
   const newUlts = syncUltimateUnlocks(save);
+  const newTier = settleTier(save, s.tier, s.wave);
+  // 每日任務進度
+  ensureDaily(save);
+  applyRunToMissions(save, { kills: s.kills, coins: s.coinsEarned, wave: s.wave, ults: runUltCasts });
+  updateDailyBadge();
   saveProgress();
   const unlockedLine = newCards.length
     ? `<div class="record">🃏 解鎖新卡片：${newCards.map((id) => cardById(id)?.name ?? id).join('、')}</div>`
@@ -1116,16 +1186,133 @@ function showResults(s: SimState): void {
   const ultLine = newUlts.length
     ? `<div class="record">💥 解鎖終極武器：${newUlts.map((id) => ultimateById(id)?.name ?? id).join('、')}</div>`
     : '';
+  const tierLine = newTier
+    ? `<div class="record">🔓 解鎖 Tier ${newTier}！（+🪙${formatNumber(TIER_CONFIG.firstClearCoins * newTier)}）</div>`
+    : '';
   $('#results-rows').innerHTML = `
     ${isRecord ? '<div class="record">🏆 新紀錄！</div>' : ''}
-    ${unlockedLine}${ultLine}
+    ${unlockedLine}${ultLine}${tierLine}
+    <div class="row"><span class="label">難度</span><span class="value">T${s.tier}</span></div>
     <div class="row"><span class="label">到達波次</span><span class="value">${s.wave}</span></div>
     <div class="row"><span class="label">擊殺數</span><span class="value">${formatNumber(s.kills)}</span></div>
     <div class="row"><span class="label">獲得金幣</span><span class="value coin" data-coinroll>+🪙 0</span></div>
     <div class="row"><span class="label">歷史最高</span><span class="value">${save.bestWave}</span></div>`;
   $('#results').classList.add('active');
   rollNumber($('#results-rows').querySelector('[data-coinroll]') as HTMLElement, s.coinsEarned, 0.8, '+🪙 ');
+  Sound.play('gameover');
+  if (s.coinsEarned >= 1) setTimeout(() => Sound.coinCascade(), 350);
+
+  // 排行榜提交：把 Tier 編碼進分數（tier*100000+wave），讓排名兼顧難度與深度
+  const durationMs = Date.now() - runWallStart;
+  if (cloudReady && cloudUser && cloudModule && activeRunId && durationMs >= 1000) {
+    const score = s.tier * 100000 + s.wave;
+    cloudModule
+      .submitRun(cloudUser, { runId: activeRunId, wave: score, kills: s.kills, durationMs })
+      .catch(() => undefined);
+  }
+  activeRunId = null;
 }
+
+// ---------- 排行榜 ----------
+
+const boardModal = $('#board-modal');
+
+/** 把編碼分數還原成 Tier 與波次（舊/純波次資料 < 100000 視為 T1） */
+function decodeScore(score: number): { tier: number; wave: number } {
+  if (score >= 100000) return { tier: Math.floor(score / 100000), wave: score % 100000 };
+  return { tier: 1, wave: score };
+}
+
+async function openLeaderboard(): Promise<void> {
+  boardModal.classList.add('active');
+  const list = $('#board-list');
+  if (!cloudReady || !cloudModule) {
+    list.innerHTML = '<div class="board-note">雲端排行榜尚未設定。<br>設定 Firebase + Cloudflare 後即可上傳成績、與全球玩家較量最高波次。</div>';
+    return;
+  }
+  list.innerHTML = '<div class="board-note">載入中…</div>';
+  try {
+    const entries = await cloudModule.fetchLeaderboard();
+    if (!entries.length) {
+      list.innerHTML = '<div class="board-note">還沒有人上榜——登入後打一場，成為第一名！</div>';
+      return;
+    }
+    list.innerHTML = '';
+    entries.forEach((e, i) => {
+      const { tier, wave } = decodeScore(e.bestWave);
+      const row = document.createElement('div');
+      row.className = 'board-row' + (i < 3 ? ` top${i + 1}` : '');
+      row.innerHTML = `<span class="rank">${i + 1}</span><span class="who"></span><span class="score">T${tier}·W${wave}</span>`;
+      (row.querySelector('.who') as HTMLElement).textContent = e.playerName || '匿名';
+      list.appendChild(row);
+    });
+  } catch {
+    list.innerHTML = '<div class="board-note">排行榜載入失敗，請稍後再試。</div>';
+  }
+}
+
+$('#board-btn').addEventListener('click', () => {
+  Sound.play('click');
+  void openLeaderboard();
+});
+$('#board-close').addEventListener('click', () => boardModal.classList.remove('active'));
+boardModal.addEventListener('click', (e) => {
+  if (e.target === boardModal) boardModal.classList.remove('active');
+});
+
+// ---------- 每日任務 ----------
+
+const dailyModal = $('#daily-modal');
+const dailyBtn = $('#daily-btn') as HTMLButtonElement;
+
+function updateDailyBadge(): void {
+  dailyBtn.classList.toggle('has-claim', claimableCount(save) > 0);
+}
+
+function renderDaily(): void {
+  ensureDaily(save);
+  const list = $('#daily-list');
+  list.innerHTML = '';
+  for (const m of save.dailyMissions) {
+    const def = missionById(m.id);
+    if (!def) continue;
+    const done = isMissionComplete(def, m.progress);
+    const pct = Math.min(100, Math.round((m.progress / def.target) * 100));
+    const row = document.createElement('div');
+    row.className = 'mission-row' + (done ? ' done' : '');
+    row.innerHTML = `
+      <div class="m-top"><span class="m-name"></span><span class="m-reward">🪙${formatNumber(def.reward)}</span></div>
+      <div class="m-desc"></div>
+      <div class="m-bar"><span style="width:${pct}%"></span></div>
+      <div class="m-foot">
+        <span class="m-prog">${formatNumber(Math.min(m.progress, def.target))} / ${formatNumber(def.target)}</span>
+        <button class="m-claim" ${done && !m.claimed ? '' : 'disabled'}>${m.claimed ? '已領取' : '領取'}</button>
+      </div>`;
+    (row.querySelector('.m-name') as HTMLElement).textContent = def.name;
+    (row.querySelector('.m-desc') as HTMLElement).textContent = def.desc;
+    (row.querySelector('.m-claim') as HTMLButtonElement).addEventListener('click', () => {
+      if (claimMission(save, m.id) > 0) {
+        Sound.play('buy');
+        saveProgress();
+        updateDailyBadge();
+        renderDaily();
+        if (!sim) refreshWorkshop();
+      }
+    });
+    list.appendChild(row);
+  }
+}
+
+dailyBtn.addEventListener('click', () => {
+  Sound.play('click');
+  renderDaily();
+  dailyModal.classList.add('active');
+});
+$('#daily-close').addEventListener('click', () => dailyModal.classList.remove('active'));
+dailyModal.addEventListener('click', (e) => {
+  if (e.target === dailyModal) dailyModal.classList.remove('active');
+});
+updateDailyBadge();
 
 // ---------- 主迴圈：固定 tick 模擬 + 每幀渲染 ----------
 
@@ -1144,8 +1331,16 @@ function frame(now: number): void {
       // 取走本 tick 的視覺事件（下個 step 開頭會清空）
       vfx.ingest(sim.events);
       for (const e of sim.events) {
-        if (e.type === 'wave') showWaveBanner(e.wave, e.boss);
+        if (e.type === 'wave') {
+          showWaveBanner(e.wave, e.boss);
+          Sound.play(e.boss ? 'boss' : 'wave');
+        }
         if (e.type === 'perkOffer') showPerkChoice(e.wave, e.choices);
+        else if (e.type === 'fire') Sound.play('fire');
+        else if (e.type === 'hit') Sound.play(e.crit ? 'crit' : 'hit');
+        else if (e.type === 'kill') Sound.play('kill');
+        else if (e.type === 'ultActivate') { Sound.play('ult'); runUltCasts++; }
+        else if (e.type === 'ultNuke') { Sound.play('nuke'); runUltCasts++; }
       }
       accumulator -= TICK_DT;
     }
@@ -1172,18 +1367,34 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
-$('#start-btn').addEventListener('click', startBattle);
+$('#start-btn').addEventListener('click', () => {
+  Sound.play('click');
+  startBattle();
+});
 $('#results-btn').addEventListener('click', showWorkshop);
 
 // 工坊 / 卡片 / 研究 分頁切換
 for (const b of document.querySelectorAll<HTMLButtonElement>('.meta-nav button')) {
   b.addEventListener('click', () => {
+    Sound.play('click');
     if (b.dataset.meta === 'cards') showCards();
     else if (b.dataset.meta === 'research') showResearch();
     else if (b.dataset.meta === 'ultimates') showUltimates();
     else showWorkshop();
   });
 }
+
+// 音效：首個手勢喚醒音訊環境；靜音鈕
+const soundBtn = $('#sound-btn') as HTMLButtonElement;
+soundBtn.textContent = Sound.muted ? '🔇' : '🔊';
+soundBtn.classList.toggle('muted', Sound.muted);
+soundBtn.addEventListener('click', () => {
+  const muted = Sound.toggleMute();
+  soundBtn.textContent = muted ? '🔇' : '🔊';
+  soundBtn.classList.toggle('muted', muted);
+  if (!muted) Sound.play('click');
+});
+window.addEventListener('pointerdown', () => Sound.unlock(), { once: true });
 
 showWorkshop();
 checkOfflineEarnings();

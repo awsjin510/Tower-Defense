@@ -39,12 +39,20 @@
         min-height: 34px; padding: 4px 12px; background: #0d1117; color: #8b949e;
         border-bottom: 1px solid #21262d; font-size: 11px;
       }
-      #auth-btn, #account-btn {
+      #auth-btn, #account-btn, #sound-btn {
         padding: 4px 9px; border: 1px solid #30363d; border-radius: 6px;
         background: #21262d; color: #e6edf3; font-size: 11px; cursor: pointer;
       }
       #auth-btn:disabled { opacity: 0.5; }
       #account-btn { border-color: #2b6cb0; }
+      #sound-btn, #board-btn, #daily-btn { padding: 4px 7px; font-size: 13px; line-height: 1; }
+      #sound-btn.muted { opacity: 0.5; }
+      #board-btn { border-color: #b8860b; }
+      #daily-btn { border-color: #2ea043; position: relative; }
+      #daily-btn.has-claim::after {
+        content: ''; position: absolute; top: -3px; right: -3px; width: 9px; height: 9px;
+        background: #f85149; border-radius: 50%; box-shadow: 0 0 6px #f85149;
+      }
 
       #topbar {
         display: flex; align-items: center; gap: 12px;
@@ -129,6 +137,19 @@
       #workshop-screen h1, #cards-screen h1, #research-screen h1, #ultimates-screen h1 { font-size: 20px; margin-bottom: 2px; }
       #workshop-screen .sub, #cards-screen .sub, #research-screen .sub, #ultimates-screen .sub { color: #8b949e; font-size: 13px; margin-bottom: 12px; }
       #workshop-screen h2 { font-size: 14px; color: #8b949e; margin: 14px 0 6px; }
+
+      /* Tier 選擇器 */
+      #tier-selector {
+        display: flex; align-items: center; gap: 10px; margin-top: 16px;
+        background: var(--panel); border: 1px solid var(--brd); border-radius: 12px; padding: 10px 12px;
+        box-shadow: var(--glass-hi);
+      }
+      #tier-selector button { width: 40px; height: 40px; flex: 0 0 40px; border-radius: 10px;
+        background: #21262d; border: 1px solid #30363d; color: #e6edf3; font-size: 16px; cursor: pointer; }
+      #tier-selector button:disabled { opacity: 0.3; cursor: default; }
+      #tier-info { flex: 1; text-align: center; }
+      #tier-name { font-family: var(--font-num); font-size: 18px; font-weight: 800; color: #ff9d5c; letter-spacing: 1px; }
+      #tier-detail { font-size: 11px; color: #8b949e; font-variant-numeric: tabular-nums; margin-top: 2px; }
       #workshop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
       /* 工坊 / 卡片 分頁切換 */
@@ -334,11 +355,41 @@
       }
 
       /* 帳戶面板（霓虹風，參考 The Tower） */
-      #account-modal {
+      #account-modal, #board-modal, #daily-modal {
         position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
         background: rgba(1, 4, 9, 0.82); z-index: 13; padding: 16px;
       }
-      #account-modal.active { display: flex; }
+      #account-modal.active, #board-modal.active, #daily-modal.active { display: flex; }
+      #daily-modal .account-card { max-width: 400px; width: 100%; }
+      .mission-row {
+        border: 1px solid var(--brd); border-radius: 10px; padding: 11px 12px; margin: 8px 0;
+        background: rgba(20,28,44,0.5);
+      }
+      .mission-row .m-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+      .mission-row .m-name { font-weight: 800; font-size: 14px; }
+      .mission-row .m-reward { font-family: var(--font-num); font-weight: 800; color: #ffcf4a; font-size: 13px; }
+      .mission-row .m-desc { font-size: 11px; color: #8b949e; margin: 2px 0 6px; }
+      .mission-row .m-bar { height: 7px; border-radius: 4px; background: #0d1117; overflow: hidden; }
+      .mission-row .m-bar > span { display: block; height: 100%; background: linear-gradient(90deg,#2ea043,#56d364); }
+      .mission-row .m-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+      .mission-row .m-prog { font-size: 11px; color: #8b949e; font-variant-numeric: tabular-nums; }
+      .mission-row .m-claim {
+        padding: 5px 12px; border-radius: 7px; font-size: 12px; font-weight: 800; cursor: pointer;
+        border: 1px solid #2ea043; background: #1a7f37; color: #fff;
+      }
+      .mission-row .m-claim:disabled { background: #21262d; border-color: #30363d; color: #6e7681; cursor: default; }
+      .mission-row.done { border-color: #2ea043; }
+      #board-modal .account-card { max-width: 380px; width: 100%; }
+      #board-list { max-height: 56vh; overflow-y: auto; margin: 8px 0; }
+      .board-row {
+        display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px;
+        border: 1px solid var(--brd); margin-bottom: 6px; background: rgba(20,28,44,0.5);
+      }
+      .board-row .rank { font-family: var(--font-num); font-weight: 800; color: #8b949e; width: 30px; text-align: center; }
+      .board-row.top1 .rank { color: #ffd24a; } .board-row.top2 .rank { color: #cfd8e3; } .board-row.top3 .rank { color: #e0985c; }
+      .board-row .who { flex: 1; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .board-row .score { font-family: var(--font-num); font-weight: 800; color: #ff9d5c; }
+      .board-note { color: #8b949e; font-size: 13px; text-align: center; padding: 20px 8px; line-height: 1.6; }
       #account-modal .account-card {
         background: #0d1524; border: 1px solid #2b6cb0; border-radius: 14px;
         box-shadow: 0 0 22px rgba(56, 189, 248, 0.25), inset 0 0 20px rgba(56, 189, 248, 0.05);
@@ -532,7 +583,7 @@
   </head>
   <body>
     <div id="app">
-      <div id="authbar"><span id="auth-status">本機存檔</span><button id="account-btn" type="button">帳戶</button><button id="auth-btn" type="button">Google 登入</button></div>
+      <div id="authbar"><span id="auth-status">本機存檔</span><button id="sound-btn" type="button" title="音效開關">🔊</button><button id="board-btn" type="button" title="排行榜">🏆</button><button id="daily-btn" type="button" title="每日任務">📋</button><button id="account-btn" type="button">帳戶</button><button id="auth-btn" type="button">Google 登入</button></div>
       <header id="topbar"></header>
 
       <div id="workshop-screen" class="screen active">
@@ -545,6 +596,14 @@
         <h1>工坊</h1>
         <div class="sub">用金幣購買永久升級，每一場都會更強</div>
         <div id="workshop-grid"></div>
+        <div id="tier-selector">
+          <button id="tier-prev" type="button" aria-label="上一個 Tier">◀</button>
+          <div id="tier-info">
+            <div id="tier-name">Tier 1</div>
+            <div id="tier-detail"></div>
+          </div>
+          <button id="tier-next" type="button" aria-label="下一個 Tier">▶</button>
+        </div>
         <button id="start-btn">開始戰鬥</button>
       </div>
 
@@ -630,6 +689,24 @@
           <div id="account-linked"></div>
           <div id="account-actions"></div>
           <button id="account-close" type="button">關閉</button>
+        </div>
+      </div>
+
+      <div id="board-modal">
+        <div class="account-card">
+          <h2>🏆 全球排行榜</h2>
+          <div class="account-linked-label" id="board-sub">最高波次</div>
+          <div id="board-list"></div>
+          <button id="board-close" type="button">關閉</button>
+        </div>
+      </div>
+
+      <div id="daily-modal">
+        <div class="account-card">
+          <h2>📋 每日任務</h2>
+          <div class="account-linked-label">每天重置 · 完成領金幣</div>
+          <div id="daily-list"></div>
+          <button id="daily-close" type="button">關閉</button>
         </div>
       </div>
     </div>

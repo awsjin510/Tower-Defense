@@ -4,6 +4,9 @@
     { "id": "fast", "name": "疾行者", "hpMult": 0.55, "speedMult": 1.9, "dmgMult": 0.7, "rewardMult": 1.15, "radius": 7, "color": "#e0a83c", "minWave": 3 },
     { "id": "tank", "name": "重甲兵", "hpMult": 3.2, "speedMult": 0.55, "dmgMult": 1.8, "rewardMult": 2.6, "radius": 13, "color": "#8455e0", "minWave": 6 },
     { "id": "sniper", "name": "狙擊手", "hpMult": 0.85, "speedMult": 0.95, "dmgMult": 1.3, "rewardMult": 1.7, "radius": 8, "color": "#3cc8e0", "minWave": 8, "attackRange": 150 },
+    { "id": "splitter", "name": "分裂體", "hpMult": 1.4, "speedMult": 0.85, "dmgMult": 0.9, "rewardMult": 2.0, "radius": 11, "color": "#8ae05a", "minWave": 16, "weight": 0.5, "splitInto": 2, "splitType": "normal" },
+    { "id": "vampire", "name": "吸血鬼", "hpMult": 2.0, "speedMult": 1.0, "dmgMult": 1.1, "rewardMult": 2.6, "radius": 10, "color": "#e0407a", "minWave": 19, "weight": 0.45, "lifesteal": 0.15 },
+    { "id": "protector", "name": "護盾兵", "hpMult": 2.6, "speedMult": 0.7, "dmgMult": 0.8, "rewardMult": 3.2, "radius": 12, "color": "#4a9eff", "minWave": 24, "weight": 0.35, "auraHeal": 0.045, "auraRadius": 125 },
     { "id": "boss", "name": "頭目", "hpMult": 22.0, "speedMult": 0.45, "dmgMult": 4.0, "rewardMult": 18.0, "radius": 22, "color": "#d43cc8", "minWave": 10, "summonEvery": 6, "summonCount": 2, "summonType": "normal" }
   ],
   "scaling": {
