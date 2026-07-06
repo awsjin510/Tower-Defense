@@ -3,6 +3,7 @@ import { ENEMY_TYPES } from '../core/waves';
 import { zoneForWave } from '../core/zones';
 import type { Enemy } from '../core/types';
 import type { Vfx } from './vfx';
+import { hasPerk } from '../core/perks';
 
 const WORLD = ARENA_RADIUS * 2 + 60;
 const enemyColor = new Map(ENEMY_TYPES.map((t) => [t.id, t.color]));
@@ -171,6 +172,51 @@ export function render(
     ctx.beginPath();
     ctx.arc(st.x + Math.sin(drift * 0.05 + st.x) * 6, st.y, st.r, 0, Math.PI * 2);
     ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // 戰區環境語言：每區都有可辨識、可預讀的動態，而不只是換底色。
+  if (zone.mechanic.kind === 'split') {
+    ctx.fillStyle = '#72e78a';
+    for (let i = 0; i < 15; i++) {
+      const a = i * 2.4 + s.time * (0.025 + (i % 3) * 0.012);
+      const rr = 65 + ((i * 43) % 250);
+      ctx.globalAlpha = 0.12 + (i % 4) * 0.035;
+      ctx.beginPath(); ctx.arc(Math.cos(a) * rr, Math.sin(a * 1.07) * rr, 1.5 + (i % 3), 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (zone.mechanic.kind === 'frost') {
+    ctx.strokeStyle = 'rgba(150,230,255,.28)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const r1 = ARENA_RADIUS - 16 - (i % 3) * 9;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * ARENA_RADIUS, Math.sin(a) * ARENA_RADIUS);
+      ctx.lineTo(Math.cos(a + 0.05) * r1, Math.sin(a + 0.05) * r1);
+      ctx.stroke();
+    }
+  } else if (zone.mechanic.kind === 'magma') {
+    const warning = Math.max(0, 1 - s.zonePulseTimer / 1.5);
+    ctx.strokeStyle = `rgba(255,92,40,${0.18 + warning * 0.65})`;
+    ctx.shadowColor = '#ff5c28'; ctx.shadowBlur = warning * 18; ctx.lineWidth = 2 + warning * 2;
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + 0.35;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * 62, Math.sin(a) * 62);
+      for (let k = 1; k <= 4; k++) {
+        const r = 62 + k * 56;
+        const wobble = Math.sin(i * 9 + k * 4) * 0.075;
+        ctx.lineTo(Math.cos(a + wobble) * r, Math.sin(a + wobble) * r);
+      }
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+  } else {
+    ctx.strokeStyle = 'rgba(190,125,255,.2)';
+    for (let i = 0; i < 4; i++) {
+      const r = 85 + i * 58 + Math.sin(s.time * 1.2 + i) * 8;
+      ctx.globalAlpha = .18 + i * .05; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.ellipse(0, 0, r, r * .82, s.time * .035 * (i % 2 ? -1 : 1), 0, Math.PI * 2); ctx.stroke();
+    }
   }
   ctx.globalAlpha = 1;
 
@@ -344,6 +390,22 @@ export function render(
       ctx.stroke();
       ctx.setLineDash([]);
     }
+    if (e.burnTime > 0) {
+      ctx.fillStyle = '#ff8b3d';
+      for (let i = 0; i < e.burnStacks; i++) {
+        const a = s.time * 4 + (i / Math.max(e.burnStacks, 1)) * Math.PI * 2;
+        ctx.globalAlpha = .55 + Math.sin(a * 2) * .2;
+        ctx.beginPath(); ctx.arc(e.x + Math.cos(a) * (e.radius + 6), e.y + Math.sin(a) * (e.radius + 6) - 2, 2.2, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (e.frozenTime > 0) {
+      ctx.strokeStyle = '#d9f7ff'; ctx.lineWidth = 1.5;
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x + Math.cos(a) * (e.radius + 7), e.y + Math.sin(a) * (e.radius + 7)); ctx.stroke();
+      }
+    }
     const fl = vfx.flash.get(e.id);
     if (fl) {
       ctx.globalAlpha = Math.min(fl / 0.12, 1) * 0.85;
@@ -408,13 +470,34 @@ export function render(
   ctx.restore();
   // 砲管
   ctx.strokeStyle = '#9ecbff';
-  ctx.lineWidth = 6;
+  ctx.lineWidth = 6 + Math.min((s.inRunLevels.damage ?? 0) * 0.12, 5);
   ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(0, 0);
   ctx.lineTo(Math.cos(aim) * TOWER_RADIUS * 1.4, Math.sin(aim) * TOWER_RADIUS * 1.4);
   ctx.stroke();
   ctx.lineCap = 'butt';
+  // Build 外觀：燃燒軌道、冰霜晶環、防禦護盾與經濟資料粒子。
+  if (hasPerk(s.perks, 'incendiary')) {
+    ctx.fillStyle = '#ff7a3d'; ctx.shadowColor = '#ff7a3d'; ctx.shadowBlur = 9;
+    for (let i = 0; i < 3; i++) { const a = s.time * 1.8 + i * Math.PI * 2 / 3; ctx.beginPath(); ctx.arc(Math.cos(a) * 38, Math.sin(a) * 38, 3.5, 0, Math.PI * 2); ctx.fill(); }
+    ctx.shadowBlur = 0;
+  }
+  if (hasPerk(s.perks, 'cryoRounds')) {
+    ctx.strokeStyle = 'rgba(130,225,255,.75)'; ctx.lineWidth = 2; ctx.beginPath();
+    for (let i = 0; i < 6; i++) { const a = -s.time * .5 + i * Math.PI / 3; const x = Math.cos(a) * 39, y = Math.sin(a) * 39; i ? ctx.lineTo(x,y) : ctx.moveTo(x,y); } ctx.closePath(); ctx.stroke();
+  }
+  const defenseLv = (s.inRunLevels.maxHealth ?? 0) + (s.workshopLevels.ws_maxHealth ?? 0);
+  if (defenseLv >= 3) {
+    ctx.strokeStyle = `rgba(88,198,255,${Math.min(.18 + defenseLv * .008, .48)})`; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, TOWER_RADIUS + 20 + Math.sin(s.time * 2) * 1.5, 0, Math.PI * 2); ctx.stroke();
+  }
+  const ecoLv = s.inRunLevels.cashPerKill ?? 0;
+  if (ecoLv >= 3) {
+    ctx.fillStyle = '#ffd45c';
+    for (let i = 0; i < Math.min(ecoLv / 3, 5); i++) { const a = -s.time + i * 1.9; ctx.globalAlpha=.45; ctx.fillRect(Math.cos(a)*48-1, Math.sin(a)*31-1, 2, 2); }
+    ctx.globalAlpha=1;
+  }
   // 塔核心：戰區主題色的脈動能量核
   const corePulse = 0.5 + Math.sin(s.time * 3.2) * 0.5;
   ctx.fillStyle = '#cfe4ff';
