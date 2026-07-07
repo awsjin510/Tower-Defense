@@ -66,8 +66,11 @@
       .coin { color: #e3b341; }
       .cash { color: #56d364; }
 
-      #canvas-wrap { position: relative; width: 100%; flex: 1 1 auto; min-height: 0; }
-      #game { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+      #canvas-wrap {
+        position: relative; width: 100%; flex: 1 1 auto; min-height: 0;
+        overflow: hidden; contain: layout paint; background: #05070d;
+      }
+      #game { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 
       .speed-btn {
         background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px;
@@ -108,13 +111,15 @@
 
       .upgrade-grid {
         display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px;
-        max-height: 32vh; overflow-y: auto;
+        height: clamp(164px, 29vh, 220px); grid-auto-rows: 86px;
+        overflow-y: auto; align-content: start; scrollbar-gutter: stable;
       }
       .upgrade-btn {
         display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
         background: #21262d; border: 1px solid #30363d; border-radius: 8px;
         padding: 8px 10px; color: #e6edf3; cursor: pointer; text-align: left; font-size: 13px;
-        min-height: 44px; transition: border-color 0.15s, box-shadow 0.15s, transform 0.06s;
+        height: 86px; min-height: 86px; overflow: hidden;
+        transition: border-color 0.15s, box-shadow 0.15s, transform 0.06s;
       }
       .upgrade-btn:not(:disabled):active { background: #30363d; transform: scale(0.97); }
       .upgrade-btn:disabled { opacity: 0.42; cursor: default; }
@@ -608,7 +613,7 @@
       @keyframes threatPulse { to{border-color:rgba(255,90,100,.72)} }
       #target-btn { position:absolute; right:10px; bottom:10px; z-index:7; padding:7px 10px; border-radius:9px; border:1px solid rgba(88,198,255,.5); color:#bcecff; background:rgba(8,18,30,.82); font-size:11px; font-weight:800; backdrop-filter:blur(6px); }
       #bottom { flex: 0 0 auto; }
-      .upgrade-grid { max-height: 29vh; }
+      .upgrade-grid { height: clamp(164px, 29vh, 220px); }
       .upgrade-btn .value { display:flex; align-items:baseline; gap:7px; }
       .upgrade-btn .preview { color:#4fe08a; font-size:12px; text-shadow:0 0 8px rgba(79,224,138,.35); }
       .upgrade-btn.bought { animation: upgradeBuy .42s ease-out; border-color:#7dffb0; }
@@ -660,7 +665,8 @@
         #topbar.battle-hud .spacer { display:none; }
         #topbar .stat .value { font-size:13px; }
         #topbar .stat .value[data-zone] { max-width:86px; overflow:hidden; text-overflow:ellipsis; }
-        .upgrade-grid { max-height:28vh; }
+        .upgrade-grid { height:clamp(156px,28vh,202px); grid-auto-rows:82px; }
+        .upgrade-btn { height:82px; min-height:82px; }
         #wave-banner { max-width:92%; white-space:normal; text-align:center; font-size:13px; }
       }
     </style>

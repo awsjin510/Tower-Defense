@@ -150,12 +150,17 @@ export function render(
   s: SimState,
   vfx: Vfx
 ): void {
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
-  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const rect = canvas.getBoundingClientRect();
+  const w = Math.max(1, rect.width);
+  const h = Math.max(1, rect.height);
+  // Canvas backing size 必須是整數。直接與含小數的 CSS 尺寸比較，會在
+  // 1.25x/1.5x 顯示倍率下每幀重設畫布，造成點技能時閃動與裁切錯位。
+  const pixelWidth = Math.max(1, Math.round(w * dpr));
+  const pixelHeight = Math.max(1, Math.round(h * dpr));
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   // 深空底：垂直漸層讓戰場更有景深
