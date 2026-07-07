@@ -11,7 +11,9 @@ export interface ResearchDef {
   name: string;
   icon: string;
   color: string;
-  stat: StatId;
+  stat?: StatId;
+  utility?: 'forecast' | 'routeIntel' | 'ultCharge' | 'battleAnalysis';
+  desc?: string;
   valuePerLevel: number;
   baseCost: number;
   costGrowth: number;
@@ -48,6 +50,6 @@ export function isResearchMaxed(def: ResearchDef, level: number): boolean {
 /** 把研究等級的永久加成套到屬性上（與工坊同層，於基礎值之上相加） */
 export function applyResearch(stats: Stats, researchLevels: Levels): void {
   for (const def of RESEARCH) {
-    stats[def.stat] += researchValue(def, researchLevels[def.id] ?? 0);
+    if (def.stat) stats[def.stat] += researchValue(def, researchLevels[def.id] ?? 0);
   }
 }

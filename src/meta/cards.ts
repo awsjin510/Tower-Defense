@@ -34,8 +34,11 @@ export function buyStarUp(save: SaveData, id: string): boolean {
   if (!cardById(id)) return false;
   const star = cardStar(save, id);
   const cost = starUpCost(star);
-  if (cost === null || save.coins < cost) return false;
-  save.coins -= cost;
+  if (cost === null) return false;
+  const shardCost = star === 1 ? 15 : 35;
+  if (save.coins >= cost) save.coins -= cost;
+  else if (save.cardShards >= shardCost) save.cardShards -= shardCost;
+  else return false;
   save.cards[id] = star + 1;
   return true;
 }
@@ -79,7 +82,7 @@ export function pruneEquipped(save: SaveData): void {
 
 /** 把目前裝備儲存到 0-based 預設槽。 */
 export function savePreset(save: SaveData, index: number): boolean {
-  if (index < 0 || index >= 3) return false;
+  if (index < 0 || index >= 5) return false;
   save.cardPresets[index] = [...save.equipped];
   return true;
 }

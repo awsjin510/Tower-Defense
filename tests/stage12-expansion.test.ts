@@ -71,7 +71,7 @@ describe('stage 2 cards and presets', () => {
   it('舊存檔升至 v10 並可儲存／套用三套配置', () => {
     const migrated = migrate({ version: 9, cards: {}, equipped: [] });
     expect(migrated.version).toBe(SAVE_VERSION);
-    expect(migrated.cardPresets).toEqual([[], [], []]);
+    expect(migrated.cardPresets).toEqual([[], [], [], [], []]);
     const save = defaultSave();
     save.bestWave = 999; syncCardUnlocks(save); save.cardSlots = 8;
     save.equipped = ['as', 'hp', 'coin'];

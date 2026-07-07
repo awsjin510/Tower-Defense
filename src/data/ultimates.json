@@ -23,18 +23,20 @@
       "name": "黑洞",
       "icon": "🕳️",
       "color": "#b878ff",
-      "kind": "nuke",
+      "kind": "blackhole",
       "unlockWave": 20,
       "baseCooldown": 60,
       "cooldownPerLevel": -3,
       "minCooldown": 30,
-      "baseDuration": 0,
-      "durationPerLevel": 0,
+      "baseDuration": 4,
+      "durationPerLevel": 0.25,
       "baseValue": 8,
       "valuePerLevel": 3,
       "baseUpgradeCost": 600,
       "upgradeGrowth": 1.6,
       "maxLevel": 10
-    }
+    },
+    { "id": "orbital", "name": "軌道轟炸", "icon": "☄️", "color": "#ff7043", "kind": "orbital", "unlockWave": 30, "baseCooldown": 65, "cooldownPerLevel": -3, "minCooldown": 32, "baseDuration": 5, "durationPerLevel": 0.35, "baseValue": 3, "valuePerLevel": 1.2, "baseUpgradeCost": 850, "upgradeGrowth": 1.65, "maxLevel": 10 },
+    { "id": "timefreeze", "name": "時間凍結", "icon": "⏳", "color": "#72d8ff", "kind": "timeFreeze", "unlockWave": 40, "baseCooldown": 70, "cooldownPerLevel": -3, "minCooldown": 36, "baseDuration": 5, "durationPerLevel": 0.3, "baseValue": 0, "valuePerLevel": 0, "baseUpgradeCost": 1100, "upgradeGrowth": 1.7, "maxLevel": 10 }
   ]
 }

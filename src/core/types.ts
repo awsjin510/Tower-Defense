@@ -25,7 +25,7 @@ export type StatId =
 export type TargetPriority = 'closest' | 'farthest' | 'highHp' | 'lowHp' | 'elite' | 'ranged';
 export type EliteAffix = 'shielded' | 'regenerating' | 'enraged' | 'stealth' | 'volatile' | 'healer' | 'reflective' | 'blinking';
 export type BossArchetype = 'swarm' | 'bulwark' | 'leech' | 'chrono';
-export type RouteId = 'safe' | 'danger';
+export type RouteId = 'safe' | 'danger' | 'anomaly';
 export type DamageSource = 'direct' | 'burn' | 'chain' | 'splash' | 'bounce' | 'thorns' | 'ultimate' | 'satellite';
 
 export interface UpgradeDef {
@@ -131,6 +131,7 @@ export interface Enemy {
   affixTriggered: boolean;
   bossArchetype?: BossArchetype;
   bossPhase: number;
+  golden?: boolean;
 }
 
 export interface Bullet {

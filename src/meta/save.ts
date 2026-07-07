@@ -1,6 +1,6 @@
 import type { Levels } from '../core/stats';
 
-export const SAVE_VERSION = 10;
+export const SAVE_VERSION = 11;
 const SAVE_KEY = 'tower-defense-save';
 
 /** 每日任務進度 */
@@ -56,6 +56,12 @@ export interface SaveData {
   dailyMissions: DailyMission[];
   /** 三套卡片 Build 預設（v10 起） */
   cardPresets: string[][];
+  equippedUltimates: string[];
+  ultimateBranches: Record<string, 'power' | 'cycle' | 'variant'>;
+  workshopSpec: 'firepower' | 'fortress' | 'economy';
+  lastRunReport: { damage: number; cards: Record<string, number>; ultimates: Record<string, { uses: number; damage: number; coins: number }> } | null;
+  cardVariants: Record<string, 'power' | 'utility'>;
+  cardShards: number;
 }
 
 export function defaultSave(): SaveData {
@@ -81,7 +87,13 @@ export function defaultSave(): SaveData {
     tierBestWave: {},
     dailyDate: '',
     dailyMissions: [],
-    cardPresets: [[], [], []],
+    cardPresets: [[], [], [], [], []],
+    equippedUltimates: [],
+    ultimateBranches: {},
+    workshopSpec: 'firepower',
+    lastRunReport: null,
+    cardVariants: {},
+    cardShards: 0,
   };
 }
 
@@ -113,8 +125,9 @@ export function migrate(raw: unknown): SaveData {
   // v6 → v7：ultimates 由 defaultSave 補 {}（無終極武器）。
   // v7 → v8：tier / tierMax / tierBestWave 由 defaultSave 補預設（T1）。
   // v8 → v9：dailyDate / dailyMissions 由 defaultSave 補空，首次開啟時產生當日任務。
-  // v9 → v10：cardPresets 由 defaultSave 補三套空預設。
-  data.cardPresets = Array.from({ length: 3 }, (_, i) => [...(data.cardPresets?.[i] ?? [])]);
+  // v9 → v10：cardPresets 由 defaultSave 補預設；v11 擴充終極配置、專精、卡片變體與戰報。
+  data.cardPresets = Array.from({ length: 5 }, (_, i) => [...(data.cardPresets?.[i] ?? [])]);
+  data.equippedUltimates = [...(data.equippedUltimates ?? [])].slice(0, 2);
   data.version = SAVE_VERSION;
   return data;
 }
@@ -136,6 +149,10 @@ export function applySave(target: SaveData, source: SaveData): void {
     tierBestWave: { ...(source.tierBestWave ?? {}) },
     dailyMissions: (source.dailyMissions ?? []).map((m) => ({ ...m })),
     cardPresets: Array.from({ length: 3 }, (_, i) => [...(source.cardPresets?.[i] ?? [])]),
+    equippedUltimates: [...(source.equippedUltimates ?? [])].slice(0, 2),
+    ultimateBranches: { ...(source.ultimateBranches ?? {}) },
+    lastRunReport: source.lastRunReport ? structuredClone(source.lastRunReport) : null,
+    cardVariants: { ...(source.cardVariants ?? {}) },
   });
 }
 

@@ -5,6 +5,10 @@
     { "id": "r_hp",     "name": "裝甲研究", "icon": "🛡️", "color": "#58a6ff", "stat": "maxHealth",   "valuePerLevel": 25,   "baseCost": 150, "costGrowth": 1.5,  "baseTimeSec": 120, "timeGrowth": 1.55, "maxLevel": 20 },
     { "id": "r_crit",   "name": "精準研究", "icon": "🎯", "color": "#e3b341", "stat": "critChance",  "valuePerLevel": 0.01, "baseCost": 220, "costGrowth": 1.6,  "baseTimeSec": 180, "timeGrowth": 1.6,  "maxLevel": 15 },
     { "id": "r_coin",   "name": "煉金研究", "icon": "🪙", "color": "#e3b341", "stat": "coinBonus",   "valuePerLevel": 0.06, "baseCost": 250, "costGrowth": 1.65, "baseTimeSec": 200, "timeGrowth": 1.65, "maxLevel": 15 },
-    { "id": "r_regen",  "name": "修復研究", "icon": "➕", "color": "#56d364", "stat": "healthRegen", "valuePerLevel": 0.4,  "baseCost": 160, "costGrowth": 1.5,  "baseTimeSec": 140, "timeGrowth": 1.55, "maxLevel": 15 }
+    { "id": "r_regen",  "name": "修復研究", "icon": "➕", "color": "#56d364", "stat": "healthRegen", "valuePerLevel": 0.4,  "baseCost": 160, "costGrowth": 1.5,  "baseTimeSec": 140, "timeGrowth": 1.55, "maxLevel": 15 },
+    { "id":"r_forecast", "name":"敵情預測", "icon":"🔭", "color":"#72d8ff", "utility":"forecast", "desc":"預先顯示下一波敵人與詞綴", "valuePerLevel":1, "baseCost":450, "costGrowth":2, "baseTimeSec":300, "timeGrowth":1.8, "maxLevel":3 },
+    { "id":"r_route", "name":"航道情報", "icon":"🧭", "color":"#b878ff", "utility":"routeIntel", "desc":"路線選擇顯示預估敵情與報酬", "valuePerLevel":1, "baseCost":600, "costGrowth":2, "baseTimeSec":420, "timeGrowth":1.8, "maxLevel":3 },
+    { "id":"r_ultcharge", "name":"終極蓄能", "icon":"⚛️", "color":"#e3b341", "utility":"ultCharge", "desc":"每級開場獲得 5% 終極充能", "valuePerLevel":5, "baseCost":700, "costGrowth":1.9, "baseTimeSec":480, "timeGrowth":1.75, "maxLevel":8 },
+    { "id":"r_report", "name":"戰術分析", "icon":"📊", "color":"#56d364", "utility":"battleAnalysis", "desc":"解鎖戰敗原因、時間軸與 Build 建議", "valuePerLevel":1, "baseCost":800, "costGrowth":2, "baseTimeSec":600, "timeGrowth":1.8, "maxLevel":3 }
   ]
 }

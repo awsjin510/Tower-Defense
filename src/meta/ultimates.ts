@@ -47,9 +47,18 @@ export function buyUltimateUpgrade(save: SaveData, id: string): boolean {
 /** 本場可用的終極武器（已解鎖者，解析成模擬用參數） */
 export function resolvedUltimates(save: SaveData): ResolvedUltimate[] {
   const out: ResolvedUltimate[] = [];
-  for (const def of ULTIMATES) {
+  const selected = save.equippedUltimates.length ? save.equippedUltimates : ULTIMATES.filter((d) => ultimateLevel(save, d.id) > 0).slice(0, 2).map((d) => d.id);
+  for (const def of ULTIMATES.filter((d) => selected.includes(d.id))) {
     const level = ultimateLevel(save, def.id);
-    if (level >= 1) out.push(resolveUltimate(def, level));
+    if (level >= 1) out.push(resolveUltimate(def, level, save.ultimateBranches[def.id]));
   }
   return out;
+}
+
+export function toggleUltimateEquip(save: SaveData, id: string): boolean {
+  if (ultimateLevel(save, id) < 1) return false;
+  const i = save.equippedUltimates.indexOf(id);
+  if (i >= 0) { save.equippedUltimates.splice(i, 1); return false; }
+  if (save.equippedUltimates.length >= 2) return false;
+  save.equippedUltimates.push(id); return true;
 }

@@ -29,6 +29,7 @@ export const TARGET_PRIORITIES: TargetPriority[] = ['closest', 'farthest', 'high
 export const ROUTES: Record<RouteId, { name: string; desc: string; hp: number; dmg: number; reward: number }> = {
   safe: { name: '穩定航道', desc: '敵人 -10% HP／傷害，獎勵 -10%', hp: 0.9, dmg: 0.9, reward: 0.9 },
   danger: { name: '危險裂隙', desc: '敵人 +25% HP、+15% 傷害，獎勵 +50%', hp: 1.25, dmg: 1.15, reward: 1.5 },
+  anomaly: { name: '異常星雲', desc: '敵人 +10% HP、更多詞綴，獎勵 +25%', hp: 1.1, dmg: 1, reward: 1.25 },
 };
 export const ELITE_AFFIXES: EliteAffix[] = ['shielded', 'regenerating', 'enraged', 'stealth', 'volatile', 'healer', 'reflective', 'blinking'];
 export const BOSS_ARCHETYPES: BossArchetype[] = ['swarm', 'bulwark', 'leech', 'chrono'];
@@ -88,8 +89,16 @@ export interface SimState {
   ultimates: ResolvedUltimate[];
   /** 各終極武器的剩餘冷卻秒數（0 = 可施放） */
   ultCooldowns: Record<string, number>;
+  ultCharge: Record<string, number>;
+  ultUses: Record<string, number>;
+  ultDamage: Record<string, number>;
+  ultCoins: Record<string, number>;
   /** 進行中的限時終極效果（黃金塔） */
-  ultActive: Array<{ id: string; remaining: number; coinMult: number }>;
+  ultActive: Array<{ id: string; remaining: number; coinMult: number; kills?: number }>;
+  blackHole: { remaining: number; x: number; y: number; damage: number } | null;
+  orbital: { remaining: number; pulse: number; damage: number; x: number; y: number; warning: number } | null;
+  timeFreezeTimer: number;
+  battleTimeline: Array<{ time: number; wave: number; text: string }>;
   /** 戰區機制共用計量：寒冰侵蝕程度、週期能力倒數 */
   zoneMeter: number;
   zonePulseTimer: number;
@@ -157,7 +166,15 @@ export function newRun(
     mods,
     ultimates,
     ultCooldowns: Object.fromEntries(ultimates.map((u) => [u.id, 0])),
+    ultCharge: Object.fromEntries(ultimates.map((u) => [u.id, Math.min(40, (researchLevels.r_ultcharge ?? 0) * 5)])),
+    ultUses: Object.fromEntries(ultimates.map((u) => [u.id, 0])),
+    ultDamage: Object.fromEntries(ultimates.map((u) => [u.id, 0])),
+    ultCoins: Object.fromEntries(ultimates.map((u) => [u.id, 0])),
     ultActive: [],
+    blackHole: null,
+    orbital: null,
+    timeFreezeTimer: 0,
+    battleTimeline: [],
     zoneMeter: 0,
     zonePulseTimer: zoneForWave(1).mechanic.interval ?? 0,
     events: [],
@@ -167,7 +184,7 @@ export function newRun(
 /** 目前所有限時終極（黃金塔）疊乘出的金幣倍率 */
 function coinMultiplier(s: SimState): number {
   let m = 1;
-  for (const a of s.ultActive) m *= a.coinMult;
+  for (const a of s.ultActive) m *= a.coinMult + Math.floor((a.kills ?? 0) / 10) * .25;
   return m;
 }
 
@@ -191,7 +208,7 @@ const SAT_FIRE_CD = 1.1;
 /** 穿透彈可再貫穿的敵人數（軌道砲大幅提升） */
 function pierceCount(s: SimState): number {
   if (!hasPerk(s.perks, 'pierce')) return 0;
-  return hasPerk(s.perks, 'railgun') ? 5 : 2;
+  return (hasPerk(s.perks, 'railgun') ? 5 : 2) + (s.timeFreezeTimer > 0 ? 3 : 0);
 }
 
 /** 多重射擊的額外目標數（多重射擊 +1、齊射再 +1） */
@@ -237,30 +254,40 @@ function damageTower(s: SimState, raw: number, source: string): number {
   s.damageTaken += dealt;
   s.lastDamageSource = source;
   s.events.push({ type: 'towerHit', dmg: dealt });
+  if (dealt > 0) chargeUltimates(s, Math.min(8, dealt / s.stats.maxHealth * 35));
   return dealt;
+}
+
+function chargeUltimates(s: SimState, amount: number): void {
+  for (const u of s.ultimates) s.ultCharge[u.id] = Math.min(100, (s.ultCharge[u.id] ?? 0) + amount);
 }
 
 /**
  * 施放終極武器；成功回傳 true。冷卻中或未持有回傳 false。
  * 由 UI 在戰鬥中呼叫（headless 模擬不會施放，故不影響平衡）。
  */
-export function activateUltimate(s: SimState, id: string): boolean {
+export function activateUltimate(s: SimState, id: string, x = 0, y = 0): boolean {
   if (s.over || s.pendingPerks) return false;
   const ult = s.ultimates.find((u) => u.id === id);
   if (!ult) return false;
-  if ((s.ultCooldowns[id] ?? 0) > 0) return false;
+  if ((s.ultCooldowns[id] ?? 0) > 0 || (s.ultCharge[id] ?? 0) < 100) return false;
   s.ultCooldowns[id] = ult.cooldown;
+  s.ultCharge[id] = 0;
+  s.ultUses[id] = (s.ultUses[id] ?? 0) + 1;
+  s.battleTimeline.push({ time: s.time, wave: s.wave, text: `施放 ${id}` });
   if (ult.kind === 'coinBuff') {
-    s.ultActive.push({ id, remaining: ult.duration, coinMult: ult.coinMult });
+    s.ultActive.push({ id, remaining: ult.duration, coinMult: ult.coinMult, kills: 0 });
+    s.events.push({ type: 'ultActivate', id, color: ult.color });
+  } else if (ult.kind === 'blackhole') {
+    const anchor = [...s.enemies].sort((a,b) => b.maxHp-a.maxHp)[0];
+    s.blackHole = { remaining: ult.duration, x: anchor?.x ?? 0, y: anchor?.y ?? 0, damage: s.stats.damage * ult.damageMult };
+    s.events.push({ type: 'ultActivate', id, color: ult.color });
+  } else if (ult.kind === 'orbital') {
+    s.orbital = { remaining: ult.duration, pulse: 0, damage: s.stats.damage * ult.damageMult, x, y, warning: 1.5 };
     s.events.push({ type: 'ultActivate', id, color: ult.color });
   } else {
-    // 黑洞：對全場敵人造成塔傷的倍率傷害（瞬發、確定性）
-    const dmg = s.stats.damage * ult.damageMult;
-    for (const e of [...s.enemies]) {
-      damageEnemy(s, e, dmg, 'ultimate', true);
-      if (e.hp <= 0) killEnemy(s, e);
-    }
-    s.events.push({ type: 'ultNuke', color: ult.color });
+    s.timeFreezeTimer = ult.duration + (s.towerHp < s.stats.maxHealth * .25 ? 2 : 0);
+    s.events.push({ type: 'ultActivate', id, color: ult.color });
   }
   return true;
 }
@@ -274,7 +301,7 @@ function makeEnemy(s: SimState, typeId: string, x?: number, y?: number): Enemy {
   let hp = enemyHp(s.wave, def.hpMult) * tm.hp * route.hp;
   const bossArchetype = typeId === 'boss' ? bossArchetypeForWave(s.wave) : undefined;
   if (bossArchetype === 'bulwark') hp *= 1.25;
-  const eliteAffix = typeId !== 'boss' && !['normal', 'fast'].includes(typeId) && s.wave >= 12 && s.rng() < 0.38
+  const eliteAffix = typeId !== 'boss' && !['normal', 'fast'].includes(typeId) && s.wave >= 12 && s.rng() < (s.activeRoute === 'anomaly' ? .7 : .38)
     ? ELITE_AFFIXES[Math.floor(s.rng() * ELITE_AFFIXES.length)] : undefined;
   return {
     id: s.nextEnemyId++,
@@ -315,13 +342,21 @@ function spawnEnemy(s: SimState, typeId: string): void {
 
 function killEnemy(s: SimState, e: Enemy): void {
   const coinMult = coinMultiplier(s); // 黃金塔啟用時倍增
+  const baseCoins = e.coinValue * s.stats.coinBonus;
   s.cash += e.cashValue * s.stats.cashPerKill * coinMult;
   s.coinsEarned += e.coinValue * s.stats.coinBonus * coinMult;
+  if (coinMult > 1) s.ultCoins.golden = (s.ultCoins.golden ?? 0) + baseCoins * (coinMult - 1);
   s.kills++;
+  for (const a of s.ultActive) if (a.id === 'golden') a.kills = (a.kills ?? 0) + 1;
+  chargeUltimates(s, e.typeId === 'boss' ? 25 : e.eliteAffix ? 5 : 1.6);
   // 觸發式 Perk：賞金爆裂（機率暴賞）、殲滅協議（永久傷害疊層）、殺意連鎖（連殺攻速）
   if (hasPerk(s.perks, 'bountyBurst') && s.rng() < 0.12) {
     s.cash += e.cashValue * s.stats.cashPerKill * coinMult * 3;
     s.events.push({ type: 'kill', x: e.x, y: e.y, typeId: 'coin' });
+  }
+  if (!e.golden && hasPerk(s.perks,'bountyBurst') && s.ultActive.some((a)=>a.id==='golden') && s.rng()<.08) {
+    const golden=makeEnemy(s,'normal',e.x,e.y); golden.golden=true; golden.hp*=2; golden.maxHp=golden.hp; golden.coinValue*=8; golden.cashValue*=3; s.enemies.push(golden);
+    s.events.push({type:'summon',x:e.x,y:e.y});
   }
   if (hasPerk(s.perks, 'apex')) s.apexKills++;
   if (hasPerk(s.perks, 'momentum')) {
@@ -458,6 +493,7 @@ function startNextWave(s: SimState): void {
   s.spawnIdx = 0;
   s.spawnTimer = 0;
   s.events.push({ type: 'wave', wave: s.wave, boss: isBossWave(s.wave) });
+  s.battleTimeline.push({time:s.time,wave:s.wave,text:isBossWave(s.wave)?'Boss 波開始':'新波次'});
   if (s.wave > 1 && (s.wave - 1) % 10 === 0) {
     s.pendingRoute = true;
     s.events.push({ type: 'routeOffer', wave: s.wave });
@@ -558,6 +594,34 @@ export function step(s: SimState, dt: number): void {
   }
 
   if (s.bossSlowTimer > 0) s.bossSlowTimer = Math.max(0, s.bossSlowTimer - dt);
+  if (s.timeFreezeTimer > 0) s.timeFreezeTimer = Math.max(0, s.timeFreezeTimer - dt);
+  if (s.blackHole) {
+    s.blackHole.remaining -= dt;
+    for (const e of s.enemies) {
+      const dx=s.blackHole.x-e.x, dy=s.blackHole.y-e.y, d=Math.hypot(dx,dy)||1;
+      const pull=Math.min(90*dt,d); e.x+=dx/d*pull; e.y+=dy/d*pull;
+    }
+    if (s.blackHole.remaining <= 0) {
+      for (const e of [...s.enemies]) {
+        let dmg=s.blackHole.damage;
+        if (e.burnTime>0) { dmg += e.burnDps*e.burnTime; e.burnTime=0; }
+        const dealt=damageEnemy(s,e,dmg,'ultimate',true); s.ultDamage.blackhole=(s.ultDamage.blackhole??0)+dealt;
+        if(e.hp<=0) killEnemy(s,e);
+      }
+      s.events.push({type:'ultNuke',color:'#b878ff'}); s.blackHole=null;
+    }
+  }
+  if (s.orbital) {
+    s.orbital.warning-=dt;
+    if(s.orbital.warning>0) { /* 雷射預警期間不落彈 */ }
+    else { s.orbital.remaining -= dt; s.orbital.pulse -= dt; }
+    if (s.orbital.warning<=0 && s.orbital.pulse<=0) {
+      s.orbital.pulse += .35;
+      const target=[...s.enemies].filter((e)=>(e.x-s.orbital!.x)**2+(e.y-s.orbital!.y)**2<150**2).sort((a,b)=>(Number(isElite(b))-Number(isElite(a)))||b.hp-a.hp)[0];
+      if(target){let dealt=damageEnemy(s,target,s.orbital.damage,'ultimate',true);s.ultDamage.orbital=(s.ultDamage.orbital??0)+dealt;if(hasPerk(s.perks,'satellite')){dealt=damageEnemy(s,target,s.stats.damage*.8,'satellite');s.ultDamage.orbital+=dealt;}if(target.hp<=0)killEnemy(s,target);s.events.push({type:'ultNuke',color:'#ff7043'});}
+    }
+    if(s.orbital.remaining<=0)s.orbital=null;
+  }
   for (const e of s.enemies) {
     if (e.eliteAffix === 'regenerating') e.hp = Math.min(e.maxHp, e.hp + e.maxHp * .008 * dt);
     if (e.eliteAffix === 'enraged' && !e.affixTriggered && e.hp < e.maxHp * .4) {
@@ -575,6 +639,7 @@ export function step(s: SimState, dt: number): void {
       const phase = e.hp / e.maxHp > .7 ? 3 : e.hp / e.maxHp > .35 ? 2 : 1;
       if (phase < e.bossPhase) {
         e.bossPhase = phase; e.speed *= 1.12; e.dmg *= 1.12;
+        s.battleTimeline.push({time:s.time,wave:s.wave,text:`Boss 進入階段 ${phase}`});
         if (e.bossArchetype === 'bulwark') e.affixShield += e.maxHp * .15;
         s.events.push({ type: 'status', id: e.id, x: e.x, y: e.y, status: 'empower' });
       }
@@ -627,12 +692,13 @@ export function step(s: SimState, dt: number): void {
       const milestoneSlow = (s.inRunLevels.range ?? 0) >= 10 ? 0.08 : 0;
       const slow = dist <= s.stats.range ? 1 - Math.min(s.mods.slowAura + milestoneSlow, 0.7) : 1;
       const frostSlow = e.frostStacks > 0 ? Math.max(0.55, 1 - e.frostStacks * 0.12) : 1;
-      const frozen = e.frozenTime > 0 ? 0 : 1;
-      const move = Math.min(e.speed * slow * frostSlow * frozen * dt, dist - standoff);
+      const frozen = e.frozenTime > 0 || s.timeFreezeTimer > 0 ? 0 : 1;
+      const greedSpeed = s.ultActive.some((a)=>a.id==='golden') ? 1.15 : 1;
+      const move = Math.min(e.speed * slow * frostSlow * frozen * greedSpeed * dt, dist - standoff);
       e.x -= (e.x / dist) * move;
       e.y -= (e.y / dist) * move;
       e.attackTimer = 0;
-    } else {
+    } else if (s.timeFreezeTimer <= 0) {
       e.attackTimer -= dt;
       if (e.attackTimer <= 0) {
         damageTower(s, e.dmg, e.bossArchetype ? `${e.bossArchetype} Boss` : (e.eliteAffix ? `${e.eliteAffix} 菁英` : e.typeId));
@@ -774,6 +840,7 @@ export function step(s: SimState, dt: number): void {
       const hy = target.y;
       // 連鎖閃電：暴擊時電弧跳附近敵人
       if (b.crit && hasPerk(s.perks, 'chainLightning')) chainLightning(s, target.id, hx, hy);
+      if (b.crit) chargeUltimates(s, .35);
       // 穿透彈：還能貫穿就續飛下一名（軌道砲每穿一名加成傷害），否則移除
       let removed = false;
       if (b.pierce && b.pierce > 0) {
@@ -840,6 +907,7 @@ export function step(s: SimState, dt: number): void {
   if (s.towerHp <= 0) {
     s.towerHp = 0;
     s.over = true;
+    s.battleTimeline.push({time:s.time,wave:s.wave,text:`防線被 ${s.lastDamageSource} 擊破`});
   }
 }
 

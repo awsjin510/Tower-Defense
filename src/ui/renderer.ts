@@ -175,6 +175,20 @@ export function render(
 
   const zone = zoneForWave(s.wave);
 
+  if (s.timeFreezeTimer > 0) {
+    ctx.fillStyle = 'rgba(80,190,255,.12)'; ctx.fillRect(-WORLD/2,-WORLD/2,WORLD,WORLD);
+  }
+  if (s.blackHole) {
+    const pulse=34+Math.sin(s.time*8)*6;
+    const bh=ctx.createRadialGradient(s.blackHole.x,s.blackHole.y,2,s.blackHole.x,s.blackHole.y,pulse*2.4);
+    bh.addColorStop(0,'#000'); bh.addColorStop(.35,'rgba(80,20,130,.95)'); bh.addColorStop(1,'rgba(170,80,255,0)');
+    ctx.fillStyle=bh; ctx.beginPath(); ctx.arc(s.blackHole.x,s.blackHole.y,pulse*2.4,0,Math.PI*2); ctx.fill();
+  }
+  if (s.orbital) {
+    ctx.strokeStyle=s.orbital.warning>0?'rgba(255,80,60,.9)':'rgba(255,112,67,.42)';ctx.lineWidth=s.orbital.warning>0?4:2;ctx.setLineDash([8,6]);
+    ctx.beginPath();ctx.arc(s.orbital.x,s.orbital.y,150,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+  }
+
   // 主題光影：戰區色的環境輻射光（中心亮、邊緣散）+ 偏移的星雲團塊
   const glow = ctx.createRadialGradient(0, 0, ARENA_RADIUS * 0.1, 0, 0, ARENA_RADIUS * 1.25);
   glow.addColorStop(0, zone.glow);
@@ -380,7 +394,7 @@ export function render(
 
   // 敵人（形狀 + 血條 + 命中閃白）
   for (const e of s.enemies) {
-    const base = enemyColor.get(e.typeId) ?? '#e05555';
+    const base = e.golden ? '#ffd54a' : (enemyColor.get(e.typeId) ?? '#e05555');
     // 護盾兵：畫出治療光環，讓玩家一眼看出威脅來源
     if (e.typeId === 'protector') {
       const rad = ENEMY_TYPES.find((t) => t.id === 'protector')?.auraRadius ?? 130;

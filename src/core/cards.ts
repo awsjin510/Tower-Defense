@@ -255,7 +255,7 @@ export function activeSets(equipped: string[], starOf: (id: string) => number): 
 }
 
 /** 由「已裝備卡片 + 各卡星級」組出本場加成。starOf 回傳 0 代表未裝備/未擁有。 */
-export function buildRunMods(equipped: string[], starOf: (id: string) => number): RunMods {
+export function buildRunMods(equipped: string[], starOf: (id: string) => number, variantOf: (id:string)=>'power'|'utility'|undefined = ()=>undefined): RunMods {
   const mods = emptyMods();
   for (const id of equipped) {
     const def = cardById(id);
@@ -266,6 +266,8 @@ export function buildRunMods(equipped: string[], starOf: (id: string) => number)
     if (def.bonus && star >= def.bonus.atStar) {
       applyEffect(mods, def.bonus, def.bonus.value ?? 0);
     }
+    if (star >= 3 && variantOf(id) === 'power') mods.statMods.push({stat:'damage',mult:1.05});
+    if (star >= 3 && variantOf(id) === 'utility') mods.statMods.push({stat:'coinBonus',mult:1.04});
   }
   // 套裝加成：湊齊同套裝多張時觸發
   for (const { set, count } of activeSets(equipped, starOf)) {

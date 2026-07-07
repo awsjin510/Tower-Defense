@@ -1,6 +1,7 @@
 import ultimatesData from '../data/ultimates.json';
 
-export type UltimateKind = 'coinBuff' | 'nuke';
+export type UltimateKind = 'coinBuff' | 'blackhole' | 'orbital' | 'timeFreeze';
+export type UltimateBranch = 'power' | 'cycle' | 'variant';
 
 export interface UltimateDef {
   id: string;
@@ -65,25 +66,30 @@ export interface ResolvedUltimate {
   coinMult: number;
   /** nuke 的塔傷倍率 */
   damageMult: number;
+  branch?: UltimateBranch;
 }
 
-export function resolveUltimate(def: UltimateDef, level: number): ResolvedUltimate {
+export function resolveUltimate(def: UltimateDef, level: number, branch?: UltimateBranch): ResolvedUltimate {
   const value = ultimateValue(def, level);
+  const power = branch === 'power' ? 1.35 : 1;
+  const cycle = branch === 'cycle' ? .75 : 1;
+  const variantDuration = branch === 'variant' ? 1.35 : 1;
   return {
     id: def.id,
     kind: def.kind,
     color: def.color,
-    cooldown: ultimateCooldown(def, level),
-    duration: ultimateDuration(def, level),
+    cooldown: ultimateCooldown(def, level) * cycle,
+    duration: ultimateDuration(def, level) * variantDuration,
     coinMult: def.kind === 'coinBuff' ? value : 1,
-    damageMult: def.kind === 'nuke' ? value : 0,
+    damageMult: def.kind === 'coinBuff' ? 0 : value * power,
+    branch,
   };
 }
 
 export function describeUltimate(def: UltimateDef, level: number): string {
   const cd = Math.round(ultimateCooldown(def, level));
-  if (def.kind === 'coinBuff') {
-    return `${ultimateDuration(def, level)} 秒內金幣 ×${ultimateValue(def, level).toFixed(1)}（冷卻 ${cd}s）`;
-  }
-  return `對全場造成 ${ultimateValue(def, level).toFixed(0)}× 塔傷（冷卻 ${cd}s）`;
+  if (def.kind === 'coinBuff') return `${ultimateDuration(def, level)} 秒金幣 ×${ultimateValue(def, level).toFixed(1)}；連殺提高倍率`;
+  if (def.kind === 'blackhole') return `吸怪 ${ultimateDuration(def, level)} 秒後造成 ${ultimateValue(def, level).toFixed(0)}× 塔傷`;
+  if (def.kind === 'orbital') return `${ultimateDuration(def, level)} 秒鎖定菁英轟炸，單次 ${ultimateValue(def, level).toFixed(0)}× 塔傷`;
+  return `凍結全場 ${ultimateDuration(def, level)} 秒，期間塔可繼續攻擊`;
 }

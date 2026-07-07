@@ -39,6 +39,7 @@ import {
   syncUltimateUnlocks,
   ultimateLevel,
   ultimateUpgradePrice,
+  toggleUltimateEquip,
 } from './meta/ultimates';
 import type { StatId, TargetPriority, UpgradeCategory, UpgradeDef } from './core/types';
 import { applySave, ensurePlayerId, localStorageStore, type SaveData } from './meta/save';
@@ -48,6 +49,7 @@ import { Vfx } from './ui/vfx';
 import { icon, type IconName } from './ui/icons';
 import { Sound } from './ui/sound';
 import { TIER_CONFIG, tierMods } from './core/tiers';
+import { ENEMY_TYPES, isBossWave } from './core/waves';
 import { selectTier, settleTier, tierBest } from './meta/tiers';
 import { isMissionComplete, missionById } from './core/missions';
 import { applyRunToMissions, claimMission, claimableCount, ensureDaily } from './meta/missions';
@@ -319,6 +321,7 @@ function refreshWorkshop(): void {
     refreshUpgradeButton(btn, save.workshopLevels[btn.def.id] ?? 0, save.coins, 'coin', startStats[btn.def.stat], startStats[btn.def.stat] + btn.def.valuePerLevel);
   }
   refreshTierSelector();
+  for (const b of document.querySelectorAll<HTMLButtonElement>('[data-spec]')) b.classList.toggle('active', b.dataset.spec === save.workshopSpec);
 }
 
 // ---------- Tier 選擇器 ----------
@@ -350,6 +353,9 @@ $('#tier-next').addEventListener('click', () => {
     saveProgress();
     refreshTierSelector();
   }
+});
+for (const b of document.querySelectorAll<HTMLButtonElement>('[data-spec]')) b.addEventListener('click', () => {
+  save.workshopSpec = b.dataset.spec as SaveData['workshopSpec']; saveProgress(); refreshWorkshop(); Sound.play('click');
 });
 
 const cardsScreen = $('#cards-screen');
@@ -437,10 +443,14 @@ function refreshCardCell(cell: HTMLElement): void {
   }
   const cost = starUpCost(star);
   const canStar = cost !== null;
+  const shardCost = star === 1 ? 15 : 35;
+  const canAffordStar = canStar && (save.coins >= (cost as number) || save.cardShards >= shardCost);
   cell.style.setProperty('--card-color', def.color);
   const bonusText = describeBonus(def);
   const bonusActive = def.bonus ? star >= def.bonus.atStar : false;
   const setLabel = setName(def.set);
+  const contribution = save.lastRunReport?.cards[id] ?? 0;
+  const estimate = def.effect.stat === 'maxHealth' || def.effect.kind==='thorns' || def.effect.kind==='lifesteal' ? '生存提升' : def.effect.stat==='coinBonus' || def.effect.kind==='interest' ? '收益提升' : '輸出提升';
   cell.innerHTML = `
     <div class="card-art" style="background:linear-gradient(160deg, ${def.color}44, ${def.color}11)">
       <span class="card-icon" style="color:${def.color}">${icon(cardIcon(def))}</span>
@@ -449,11 +459,14 @@ function refreshCardCell(cell: HTMLElement): void {
     </div>
     <div class="card-name">${def.name}</div>
     <div class="card-sub">${describeCard(def, star)}</div>
+    <div class="card-estimate">${equipped?'目前生效':`裝備預估：${estimate}`}</div>
+    ${contribution > 0 ? `<div class="card-contribution">上場貢獻 ${formatNumber(contribution)}</div>` : ''}
     ${bonusText ? `<div class="card-bonus ${bonusActive ? 'on' : ''}">◆ ${bonusText}</div>` : ''}
+    ${star>=3?`<div class="card-variants"><button data-card-variant="power" class="${save.cardVariants[id]==='power'?'active':''}">火力變體</button><button data-card-variant="utility" class="${save.cardVariants[id]==='utility'?'active':''}">資源變體</button></div>`:''}
     <div class="card-actions">
       <button class="card-equip">${equipped ? '卸下' : '裝備'}</button>
-      <button class="card-star" ${canStar && save.coins >= (cost as number) ? '' : 'disabled'}>${
-        canStar ? `升星 ${icon('coin')}${formatNumber(cost as number)}` : 'MAX'
+      <button class="card-star" ${canAffordStar ? '' : 'disabled'}>${
+        canStar ? (save.coins >= (cost as number) ? `升星 ${icon('coin')}${formatNumber(cost as number)}` : `升星 🧩${shardCost}`) : 'MAX'
       }</button>
     </div>`;
   (cell.querySelector('.card-equip') as HTMLButtonElement).addEventListener('click', () => {
@@ -472,6 +485,7 @@ function refreshCardCell(cell: HTMLElement): void {
       refreshCards();
     }
   });
+  for(const b of cell.querySelectorAll<HTMLButtonElement>('[data-card-variant]')) b.addEventListener('click',()=>{save.cardVariants[id]=b.dataset.cardVariant as 'power'|'utility';saveProgress();refreshCards();});
 }
 
 let slotsFlash = 0;
@@ -496,7 +510,8 @@ function cardMatchesFilter(def: CardDef, filter: CardFilter): boolean {
 function renderCardPresets(): void {
   const root = $('#card-presets');
   root.innerHTML = '';
-  for (let i = 0; i < 3; i++) {
+  const presetCount = 3 + Math.min(2, save.researchLevels.r_report ?? 0);
+  for (let i = 0; i < presetCount; i++) {
     const group = document.createElement('div');
     group.className = 'preset-group';
     const count = save.cardPresets[i]?.length ?? 0;
@@ -536,6 +551,14 @@ function refreshCards(): void {
   refreshWorkshop(); // 共用頂欄（金幣/最高波次/場數）
   renderCardPresets();
   renderCardFilters();
+  const builds = [
+    ['🔥 燃燒',['emberstart','thermalcore','elemental']], ['❄️ 永凍',['frostcore','glacialcore','slowaura']],
+    ['🌩️ 風暴',['stormcoil','supercap','crit']], ['🛰️ 軌道',['orbitaldock','twinorbit','voidanchor']], ['🪙 經濟',['coin','interest','warchest','bountycharter']],
+  ] as const;
+  $('#recommended-builds').innerHTML = builds.map(([name,ids])=>`<button data-build="${ids.join(',')}">${name}</button>`).join('');
+  for(const b of document.querySelectorAll<HTMLButtonElement>('[data-build]')) b.addEventListener('click',()=>{
+    save.equipped=(b.dataset.build??'').split(',').filter((id)=>cardStar(save,id)>0).slice(0,save.cardSlots); saveProgress(); refreshCards();
+  });
 
   // 裝備列：已用/總槽位 + 各槽內容 + 解鎖新槽位
   const slotWrap = $('#card-loadout');
@@ -544,8 +567,9 @@ function refreshCards(): void {
   const setText = sets.length
     ? ' · ' + sets.map((s) => `<span class="set-active">${s.set.name}套 ${s.count} 件：${s.tiers.join('、')}</span>`).join(' ')
     : '';
+  const nearSet = CARD_SETS.map((set)=>({set,count:set.members.filter((id)=>save.equipped.includes(id)).length,missing:set.members.find((id)=>!save.equipped.includes(id)&&cardStar(save,id)>0)})).find((x)=>x.count===1&&x.missing);
   $('#card-loadout-label').innerHTML =
-    `裝備 <b class="${slotsFlash ? 'flash' : ''}">${save.equipped.length}/${save.cardSlots}</b> · 槽位有限，取捨你的流派${setText}`;
+    `裝備 <b class="${slotsFlash ? 'flash' : ''}">${save.equipped.length}/${save.cardSlots}</b> · 槽位有限，取捨你的流派${setText}${nearSet?` · <span class="set-active">再裝 ${cardById(nearSet.missing!)?.name} 啟動${nearSet.set.name}</span>`:''}`;
   slotWrap.innerHTML = '';
   for (let i = 0; i < save.cardSlots; i++) {
     const id = save.equipped[i];
@@ -620,6 +644,8 @@ function refreshUltimates(): void {
     const owned = level >= 1;
     const row = document.createElement('div');
     row.className = 'ult-row' + (owned ? '' : ' locked');
+    const equipped = save.equippedUltimates.includes(def.id);
+    if (equipped) row.classList.add('equipped');
 
     let cta: string;
     if (!owned) {
@@ -636,17 +662,25 @@ function refreshUltimates(): void {
       <div class="ult-body">
         <div class="ult-name">${def.name}<span class="lv">${owned ? `Lv.${level}` : '未解鎖'}</span></div>
         <div class="ult-sub">${describeUltimate(def, Math.max(level, 1))}</div>
+        ${owned ? `<div class="ult-branches">${(['power','cycle','variant'] as const).map((b,i)=>`<button data-branch="${b}" class="${save.ultimateBranches[def.id]===b?'active':''}" ${level<3?'disabled':''}>${['威力','循環','變體'][i]}</button>`).join('')}</div>` : ''}
       </div>
-      <div class="ult-cta">${cta}</div>`;
+      <div class="ult-cta">${owned ? `<button class="ult-equip">${equipped?'已攜帶':'攜帶'}</button>` : ''}${cta}</div>`;
 
     if (owned && !isUltimateMaxed(def, level)) {
-      (row.querySelector('.ult-cta button') as HTMLButtonElement).addEventListener('click', () => {
+      (row.querySelector('.ult-cta button:last-child') as HTMLButtonElement).addEventListener('click', () => {
         if (buyUltimateUpgrade(save, def.id)) {
           saveProgress();
           refreshUltimates();
         }
       });
     }
+    row.querySelector<HTMLButtonElement>('.ult-equip')?.addEventListener('click', () => {
+      if (!equipped && save.equippedUltimates.length >= 2) return;
+      toggleUltimateEquip(save, def.id); saveProgress(); refreshUltimates();
+    });
+    for (const b of row.querySelectorAll<HTMLButtonElement>('[data-branch]')) b.addEventListener('click', () => {
+      save.ultimateBranches[def.id] = b.dataset.branch as 'power'|'cycle'|'variant'; saveProgress(); refreshUltimates();
+    });
     list.appendChild(row);
   }
 }
@@ -689,8 +723,8 @@ function refreshResearch(): void {
     row.dataset.research = def.id;
 
     const cur = researchValue(def, level);
-    const nextGain = fmtResearchStat(def.stat, def.valuePerLevel);
-    const curText = level > 0 ? `目前 ${fmtResearchStat(def.stat, cur)}` : '尚未研究';
+    const nextGain = def.utility ? def.desc ?? '' : fmtResearchStat(def.stat ?? '', def.valuePerLevel);
+    const curText = level > 0 ? (def.utility ? `研究階段 ${level}` : `目前 ${fmtResearchStat(def.stat ?? '', cur)}`) : '尚未研究';
 
     let ctaHtml: string;
     if (isActive) {
@@ -703,7 +737,7 @@ function refreshResearch(): void {
     }
 
     row.innerHTML = `
-      <div class="research-icon" style="color:${def.color};background:linear-gradient(160deg, ${def.color}44, ${def.color}11)">${icon(def.stat.includes('Health') || def.stat === 'healthRegen' ? 'defense' : def.stat.includes('coin') || def.stat.includes('cash') ? 'economy' : 'research')}</div>
+      <div class="research-icon" style="color:${def.color};background:linear-gradient(160deg, ${def.color}44, ${def.color}11)">${icon(def.stat?.includes('Health') || def.stat === 'healthRegen' ? 'defense' : def.stat?.includes('coin') || def.stat?.includes('cash') ? 'economy' : 'research')}</div>
       <div class="research-body">
         <div class="research-name">${def.name}<span class="lv">Lv.${level}${maxed ? ' MAX' : ''}</span></div>
         <div class="research-sub">${curText} · 下一級 ${nextGain} · ⏱ ${fmtDuration(timeSec)}</div>
@@ -885,6 +919,13 @@ function updateBattleHud(dt: number): void {
     bossHud.classList.remove('threatening');
   }
   $('#target-btn').textContent = `索敵：${TARGET_LABELS[sim.targetPriority]}`;
+  const labels: Record<string,string> = {normal:'步兵',fast:'迅捷',tank:'重甲',ranged:'遠程',protector:'護盾',splitter:'分裂',vampire:'吸血',boss:'Boss'};
+  const remaining = sim.spawnList.slice(sim.spawnIdx).reduce<Record<string,number>>((m,id)=>(m[id]=(m[id]??0)+1,m),{});
+  const affixes = [...new Set(sim.enemies.map((e)=>e.eliteAffix).filter(Boolean))];
+  const nextIntel=(save.researchLevels.r_forecast??0)>0?`<br>下一波：${ENEMY_TYPES.filter((t)=>t.id!=='boss'&&t.minWave<=sim!.wave+1).slice(-3).map((t)=>t.name).join('、')}${isBossWave(sim.wave+1)?'、Boss':''}`:'';
+  $('#wave-preview').innerHTML = `<b>${sim.activeRoute==='danger'?'🔥 危險裂隙':sim.activeRoute==='anomaly'?'🌀 異常星雲':'🛡️ 穩定航道'}</b><br>${Object.entries(remaining).map(([id,n])=>`${labels[id]??id}×${n}`).join(' · ') || '本波已全數出現'}${affixes.length?`<br>詞綴：${affixes.join('、')}`:''}${nextIntel}`;
+  const immediateThreat = sim.enemies.some((e)=>Math.hypot(e.x,e.y)<95 || (e.eliteAffix==='volatile' && Math.hypot(e.x,e.y)<150));
+  $('#threat-warning').classList.toggle('active', immediateThreat);
 }
 
 $('#target-btn').addEventListener('click', () => {
@@ -1015,13 +1056,15 @@ function checkOfflineEarnings(): void {
   const now = Date.now();
   const elapsedSec = (now - save.lastSeenAt) / 1000;
   const gained = save.lastSeenAt > 0 ? offlineCoins(save.coinRate, elapsedSec) : 0;
+  const shards = save.lastSeenAt > 0 && elapsedSec >= 3600 ? Math.min(16, Math.floor(elapsedSec / 3600) * 2) : 0;
   // 離線期間完成的研究（load 時已 collectResearch 結算）也在此一併告知
   const doneDef = offlineResearch ? researchById(offlineResearch) : undefined;
-  if (gained < 1 && !doneDef) return;
+  if (gained < 1 && !doneDef && shards < 1) return;
   if (gained >= 1) {
     save.coins += gained;
     saveProgress();
   }
+  if (shards > 0) { save.cardShards += shards; saveProgress(); }
   const hours = Math.floor(elapsedSec / 3600);
   const mins = Math.floor((elapsedSec % 3600) / 60);
   const durText = hours > 0 ? `${hours} 小時 ${mins} 分` : `${mins} 分鐘`;
@@ -1034,7 +1077,7 @@ function checkOfflineEarnings(): void {
       : '';
   $('#offline-rows').innerHTML = `
     <div class="row"><span class="label">離線時間</span><span class="value">${durText}</span></div>
-    ${coinRow}${researchRow}`;
+    ${coinRow}${shards ? `<div class="row"><span class="label">找到卡片碎片</span><span class="value">🧩 +${shards}</span></div>` : ''}${researchRow}`;
   $('#offline-modal').classList.add('active');
   if (gained >= 1) {
     rollNumber($('#offline-rows').querySelector('[data-offroll]') as HTMLElement, gained, 0.8, '+🪙 ');
@@ -1241,6 +1284,7 @@ $('#account-copy').addEventListener('click', async () => {
 });
 
 // ---------- 終極武器：戰鬥中施放鈕 ----------
+let pendingUltTarget: string | null = null;
 
 function buildUltBar(): void {
   const bar = $('#ult-bar');
@@ -1252,13 +1296,27 @@ function buildUltBar(): void {
     btn.className = 'ult-btn';
     btn.dataset.ult = u.id;
     btn.style.setProperty('--ult-color', u.color);
-    btn.innerHTML = `<span class="glyph">${icon(u.kind === 'coinBuff' ? 'coin' : 'ultimate')}</span><div class="cool-mask"></div><div class="cool-num"></div>`;
+    btn.innerHTML = `<span class="glyph">${icon(u.kind === 'coinBuff' ? 'coin' : 'ultimate')}</span><div class="charge-ring"></div><div class="cool-mask"></div><div class="cool-num"></div><small></small>`;
+    let holdTimer=0;
+    btn.addEventListener('pointerdown',()=>{holdTimer=window.setTimeout(()=>{const tip=$('#ult-tooltip');tip.textContent=describeUltimate(def!,ultimateLevel(save,u.id));tip.classList.add('active');},450);});
+    const endHold=()=>{clearTimeout(holdTimer);$('#ult-tooltip').classList.remove('active');};
+    btn.addEventListener('pointerup',endHold);btn.addEventListener('pointercancel',endHold);btn.addEventListener('pointerleave',endHold);
     btn.addEventListener('click', () => {
-      if (sim && activateUltimate(sim, u.id)) updateUltBar();
+      if (!sim) return;
+      if (u.kind === 'orbital') {
+        pendingUltTarget=u.id; const tip=$('#ult-tooltip');tip.textContent='點擊戰場選擇轟炸區域';tip.classList.add('active');
+      } else if (activateUltimate(sim, u.id)) updateUltBar();
     });
     bar.appendChild(btn);
   }
 }
+
+canvas.addEventListener('click',(ev)=>{
+  if(!sim||!pendingUltTarget)return;
+  const rect=canvas.getBoundingClientRect();const world=Math.min(rect.width,rect.height);const scale=world/(330*2+60);
+  const x=(ev.clientX-rect.left-rect.width/2)/scale;const y=(ev.clientY-rect.top-rect.height/2)/scale;
+  if(activateUltimate(sim,pendingUltTarget,x,y)){pendingUltTarget=null;$('#ult-tooltip').classList.remove('active');updateUltBar();}
+});
 
 function updateUltBar(): void {
   if (!sim) return;
@@ -1267,23 +1325,30 @@ function updateUltBar(): void {
     const u = sim.ultimates.find((x) => x.id === id);
     if (!u) continue;
     const cd = sim.ultCooldowns[id] ?? 0;
-    const cooling = cd > 0;
+    const charge = sim.ultCharge[id] ?? 0;
+    const cooling = cd > 0 || charge < 100;
     btn.classList.toggle('cooling', cooling);
+    btn.classList.toggle('ready', !cooling);
     btn.disabled = cooling || sim.over;
+    btn.style.setProperty('--charge', `${charge * 3.6}deg`);
     const mask = btn.querySelector('.cool-mask') as HTMLElement;
     const num = btn.querySelector('.cool-num') as HTMLElement;
     if (cooling) {
       mask.style.height = `${Math.round(Math.min(cd / u.cooldown, 1) * 100)}%`;
-      num.textContent = String(Math.ceil(cd));
+      num.textContent = cd > 0 ? String(Math.ceil(cd)) : `${Math.floor(charge)}%`;
     } else {
       mask.style.height = '0%';
       num.textContent = '';
     }
+    (btn.querySelector('small') as HTMLElement).textContent = ultimateById(id)?.name ?? id;
   }
 }
 
 function startBattle(): void {
-  const mods = buildRunMods(save.equipped, (id) => cardStar(save, id));
+  const mods = buildRunMods(save.equipped, (id) => cardStar(save, id), (id)=>save.cardVariants[id]);
+  if (save.workshopSpec === 'firepower') { mods.statMods.push({stat:'damage',mult:1.1}); mods.startPerks.push('precision'); }
+  else if (save.workshopSpec === 'fortress') { mods.statMods.push({stat:'maxHealth',mult:1.15},{stat:'damageReduction',add:.05}); }
+  else { mods.statMods.push({stat:'coinBonus',mult:1.12},{stat:'cashPerKill',mult:1.1}); }
   sim = newRun(
     save.workshopLevels,
     (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
@@ -1292,6 +1357,7 @@ function startBattle(): void {
     resolvedUltimates(save),
     save.tier
   );
+  (document.querySelector('[data-route="anomaly"]') as HTMLButtonElement).hidden = (save.researchLevels.r_route ?? 0) < 1;
   resultsShown = false;
   perkOverlay.classList.remove('active');
   dispCash = 0;
@@ -1370,6 +1436,15 @@ function showResults(s: SimState): void {
   const totalDamage = Object.values(s.damageBreakdown).reduce((a,b) => a+b, 0);
   const damageRows = Object.entries(s.damageBreakdown).sort((a,b)=>b[1]-a[1]).slice(0,3).filter(([,v])=>v>0)
     .map(([k,v]) => `<div class="row"><span class="label">${damageNames[k as keyof typeof damageNames]}</span><span class="value">${formatNumber(v)} · ${totalDamage ? Math.round(v/totalDamage*100) : 0}%</span></div>`).join('');
+  const equippedCards = save.equipped.filter((id)=>cardStar(save,id)>0);
+  const cardShare = equippedCards.length ? totalDamage / equippedCards.length : 0;
+  save.lastRunReport = { damage:totalDamage, cards:Object.fromEntries(equippedCards.map((id)=>[id,cardShare])), ultimates:Object.fromEntries(s.ultimates.map((u)=>[u.id,{uses:s.ultUses[u.id]??0,damage:s.ultDamage[u.id]??0,coins:s.ultCoins[u.id]??0}])) };
+  saveProgress();
+  const biggestTaken = s.lastDamageSource;
+  const unusedUlt = s.ultimates.find((u)=>(s.ultUses[u.id]??0)===0);
+  const diagnosis = [`最大威脅：${biggestTaken}`, unusedUlt?`${ultimateById(unusedUlt.id)?.name??unusedUlt.id} 整場未使用`:'終極武器使用正常', s.activeRoute==='danger'?'危險路線提高了敵軍壓力':'可嘗試危險路線提升收益'];
+  const timeline = s.battleTimeline.slice(-4).map((e)=>`W${e.wave} ${e.text}`).join(' → ');
+  const ultRows = s.ultimates.map((u)=>`<div class="row"><span class="label">${ultimateById(u.id)?.name}貢獻</span><span class="value">${s.ultUses[u.id]??0} 次 · ${formatNumber(s.ultDamage[u.id]??0)} 傷害 · +${formatNumber(s.ultCoins[u.id]??0)}幣</span></div>`).join('');
   $('#results-rows').innerHTML = `
     ${isRecord ? '<div class="record">🏆 新紀錄！</div>' : ''}
     ${unlockedLine}${ultLine}${tierLine}
@@ -1379,6 +1454,9 @@ function showResults(s: SimState): void {
     <div class="row"><span class="label">承受傷害</span><span class="value">${formatNumber(s.damageTaken)}</span></div>
     <div class="row"><span class="label">致命來源</span><span class="value">${s.lastDamageSource}</span></div>
     ${damageRows}
+    ${ultRows}
+    <div class="report-note">🧠 ${diagnosis.join('<br>🧠 ')}</div>
+    ${timeline?`<div class="report-timeline">${timeline}</div>`:''}
     <div class="row"><span class="label">獲得金幣</span><span class="value coin" data-coinroll>+🪙 0</span></div>
     <div class="row"><span class="label">歷史最高</span><span class="value">${save.bestWave}</span></div>`;
   $('#results').classList.add('active');
@@ -1524,7 +1602,7 @@ function frame(now: number): void {
         else if (e.type === 'fire') Sound.play('fire');
         else if (e.type === 'hit') Sound.play(e.crit ? 'crit' : 'hit');
         else if (e.type === 'kill') Sound.play(e.typeId === 'coin' ? 'coin' : 'kill');
-        else if (e.type === 'ultActivate') { Sound.play('ult'); runUltCasts++; }
+        else if (e.type === 'ultActivate') { Sound.play('ult'); runUltCasts++; const wrap=$('#canvas-wrap');wrap.classList.remove('ult-cinematic');void wrap.offsetWidth;wrap.classList.add('ult-cinematic');setTimeout(()=>wrap.classList.remove('ult-cinematic'),450); }
         else if (e.type === 'ultNuke') { Sound.play('nuke'); runUltCasts++; }
       }
       accumulator -= TICK_DT;
@@ -1558,7 +1636,7 @@ $('#start-btn').addEventListener('click', () => {
 });
 $('#results-btn').addEventListener('click', showWorkshop);
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-route]')) button.addEventListener('click', () => {
-  if (sim && chooseRoute(sim, button.dataset.route as 'safe'|'danger')) {
+  if (sim && chooseRoute(sim, button.dataset.route as 'safe'|'danger'|'anomaly')) {
     $('#route-overlay').classList.remove('active'); accumulator = 0; Sound.play('click');
   }
 });

@@ -27,12 +27,12 @@ function mkEnemy(id: number, x: number, hp: number, typeId = 'normal'): Enemy {
 }
 
 describe('ultimates data & formulas', () => {
-  it('資料健全：黃金塔=coinBuff、黑洞=nuke，成本/威力隨等級遞增，冷卻有下限', () => {
+  it('資料健全：四種終極武器、成本與冷卻曲線有效', () => {
     expect(ULTIMATES.some((u) => u.kind === 'coinBuff')).toBe(true);
-    expect(ULTIMATES.some((u) => u.kind === 'nuke')).toBe(true);
+    expect(new Set(ULTIMATES.map((u)=>u.kind))).toEqual(new Set(['coinBuff','blackhole','orbital','timeFreeze']));
     for (const def of ULTIMATES) {
       expect(ultimateUpgradeCost(def, 2)).toBeGreaterThan(ultimateUpgradeCost(def, 1));
-      expect(ultimateValue(def, 2)).toBeGreaterThan(ultimateValue(def, 1));
+      if (def.kind !== 'timeFreeze') expect(ultimateValue(def, 2)).toBeGreaterThan(ultimateValue(def, 1));
       // 冷卻隨等級下降但不低於下限
       expect(ultimateCooldown(def, def.maxLevel)).toBeGreaterThanOrEqual(def.minCooldown);
       expect(ultimateCooldown(def, def.maxLevel)).toBeLessThanOrEqual(ultimateCooldown(def, 1));
@@ -94,16 +94,19 @@ describe('ultimates meta', () => {
 });
 
 describe('ultimates in sim', () => {
-  it('黑洞：瞬間對全場敵人造成塔傷倍率傷害', () => {
+  it('黑洞：充能後吸怪，結束時對全場造成傷害', () => {
     const bh = resolveUltimate(ultimateById('blackhole')!, 1);
     const s = newRun({}, 1, undefined, {}, [bh]);
+    s.stats.range=0;
     s.enemies.push(mkEnemy(1, 40, 1e9), mkEnemy(2, 60, 1e9), mkEnemy(3, 80, 1e9));
+    s.ultCharge.blackhole=100;
     expect(activateUltimate(s, 'blackhole')).toBe(true);
     const expected = s.stats.damage * bh.damageMult;
+    for(let i=0;i<Math.ceil(bh.duration/TICK_DT)+1;i++) step(s,TICK_DT);
     for (const e of s.enemies) expect(e.maxHp - e.hp).toBeCloseTo(expected);
     // 冷卻啟動 → 不能連按
     expect(activateUltimate(s, 'blackhole')).toBe(false);
-    expect(s.ultCooldowns['blackhole']).toBeCloseTo(bh.cooldown);
+    expect(s.ultCooldowns['blackhole']).toBeGreaterThan(0);
   });
 
   it('冷卻隨時間歸零後可再施放', () => {
@@ -113,6 +116,7 @@ describe('ultimates in sim', () => {
     s.stats.maxHealth = 1e12;
     s.towerHp = 1e12;
     s.enemies.push(mkEnemy(1, 40, 1e9));
+    s.ultCharge.blackhole=100;
     activateUltimate(s, 'blackhole');
     expect(s.ultCooldowns['blackhole']).toBeCloseTo(bh.cooldown);
     // 推進到冷卻結束（過程中若跳 Perk 即時清掉以免暫停）
@@ -122,6 +126,7 @@ describe('ultimates in sim', () => {
       if (s.pendingPerks) { s.perks.push(s.pendingPerks[0]); s.pendingPerks = null; }
     }
     expect(s.ultCooldowns['blackhole']).toBe(0);
+    s.ultCharge.blackhole=100;
     s.enemies.push(mkEnemy(99, 40, 1e9));
     expect(activateUltimate(s, 'blackhole')).toBe(true);
   });
@@ -130,7 +135,7 @@ describe('ultimates in sim', () => {
     const gold = resolveUltimate(ultimateById('golden')!, 1);
     const killWith = (activate: boolean): number => {
       const s = newRun({}, 1, undefined, {}, [gold]);
-      if (activate) activateUltimate(s, 'golden');
+      if (activate) { s.ultCharge.golden=100; activateUltimate(s, 'golden'); }
       s.enemies.push(mkEnemy(1, 40, 1));
       s.bullets.push({ x: 40, y: 0, targetId: 1, speed: 460, dmg: 999, crit: false });
       const before = s.coinsEarned;
@@ -143,6 +148,7 @@ describe('ultimates in sim', () => {
 
     // 到期後倍率消失
     const s = newRun({}, 1, undefined, {}, [gold]);
+    s.ultCharge.golden=100;
     activateUltimate(s, 'golden');
     const ticks = Math.ceil(gold.duration / TICK_DT) + 2;
     for (let i = 0; i < ticks; i++) step(s, TICK_DT);
