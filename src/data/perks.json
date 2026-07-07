@@ -46,6 +46,14 @@
     { "id": "frostNova", "name": "冰霜新星", "desc": "每 12 秒凍結全場敵人 1.2 秒", "rarity": "epic", "rule": "frostNova", "mods": [] },
     { "id": "lastStand", "name": "背水結界", "desc": "每 40 秒自動擋下一次致命傷害", "rarity": "epic", "rule": "lastStand", "mods": [] },
 
+    { "id": "multishot", "name": "多重射擊", "desc": "每次開火同時攻擊 2 名最近的敵人", "rarity": "rare", "rule": "multishot", "mods": [] },
+    { "id": "volley", "name": "齊射", "desc": "多重射擊再 +1 目標（共 3 名）", "rarity": "epic", "rule": "volley", "prerequisite": "multishot", "mods": [] },
+    { "id": "pierce", "name": "穿透彈", "desc": "子彈貫穿命中直線後方最多 2 名敵人", "rarity": "epic", "rule": "pierce", "mods": [] },
+    { "id": "railgun", "name": "軌道砲", "desc": "貫穿數 +3、穿透不衰減，每貫穿一名傷害 +15%", "rarity": "epic", "rule": "railgun", "prerequisite": "pierce", "mods": [] },
+    { "id": "chainLightning", "name": "連鎖閃電", "desc": "暴擊時電弧跳 3 名敵人，各造成 60% 塔傷", "rarity": "epic", "rule": "chainLightning", "mods": [] },
+    { "id": "superconductor", "name": "超導體", "desc": "電弧 +2，且對凍結敵人傷害翻倍", "rarity": "epic", "rule": "superconductor", "prerequisite": "chainLightning", "mods": [] },
+    { "id": "satellite", "name": "軌道衛星", "desc": "召喚環繞衛星，每 1.1 秒自動對最近敵人開火（70% 塔傷）", "rarity": "legendary", "rule": "satellite", "mods": [] },
+
     { "id": "overcharge", "name": "超載核心", "desc": "傷害 +60%、攻擊速度 +40%", "rarity": "legendary", "mods": [{ "stat": "damage", "mult": 1.6 }, { "stat": "attackSpeed", "mult": 1.4 }] },
     { "id": "apex", "name": "殲滅協議", "desc": "每擊殺一名敵人，本場傷害永久 +0.5%（無上限）", "rarity": "legendary", "rule": "apex", "mods": [] }
   ]

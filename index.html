@@ -567,7 +567,14 @@
       .perk-card.school-fire { --perk-color:#ff7a3d; } .perk-card.school-frost { --perk-color:#72d8ff; }
       .perk-card.school-risk { --perk-color:#ff6868; } .perk-card.school-stat { --perk-color:#8cb8ff; }
       .perk-card.school-trigger { --perk-color:#b98cff; }
+      .perk-card.school-form { --perk-color:#4be6d2; }
       .perk-card.risky .perk-name::after { content:" 高風險"; }
+
+      #free-banner { position:absolute; top:20%; left:50%; transform:translate(-50%,-8px); pointer-events:none; z-index:40;
+        font-weight:900; font-size:15px; letter-spacing:1px; color:#0c1016; padding:7px 16px; border-radius:999px;
+        background:linear-gradient(180deg,#ffe071,#f5b021); box-shadow:0 6px 22px rgba(245,176,33,.5); opacity:0; }
+      #free-banner.show { animation: freePop 1s ease-out; }
+      @keyframes freePop { 0%{opacity:0; transform:translate(-50%,4px) scale(.8)} 18%{opacity:1; transform:translate(-50%,-10px) scale(1.05)} 70%{opacity:1} 100%{opacity:0; transform:translate(-50%,-26px) scale(1)} }
 
       /* 稀有度：邊框輝光層級 + 稀有度標籤底色，傳說有金色流光 */
       .perk-card { border-color: var(--rar-line, rgba(255,255,255,.14)); }
@@ -669,6 +676,7 @@
         <div id="canvas-wrap">
           <canvas id="game"></canvas>
           <div id="wave-banner"></div>
+          <div id="free-banner">🪙 免費升級！</div>
           <div id="ult-bar"></div>
         </div>
         <div id="bottom">

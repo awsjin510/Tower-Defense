@@ -18,6 +18,7 @@ export const BASE_STATS: Stats = {
   cashPerKill: 1.0,
   cashPerWave: 20,
   coinBonus: 1.0,
+  freeUpgradeChance: 0,
 };
 
 export type Levels = Record<string, number>;

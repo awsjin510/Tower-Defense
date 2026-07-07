@@ -64,6 +64,9 @@ export interface SimState {
   shieldTimer: number;
   shieldReady: boolean;
   apexKills: number;
+  /** 軌道衛星：目前繞行角度與開火倒數 */
+  satAngle: number;
+  satTimer: number;
   /** 本場裝備卡片組出的加成（整場固定） */
   mods: RunMods;
   /** 本場可用的終極武器（已解析等級參數） */
@@ -123,6 +126,8 @@ export function newRun(
     shieldTimer: 40,
     shieldReady: false,
     apexKills: 0,
+    satAngle: 0,
+    satTimer: 1.1,
     mods,
     ultimates,
     ultCooldowns: Object.fromEntries(ultimates.map((u) => [u.id, 0])),
@@ -154,18 +159,34 @@ function combatDamageMult(s: SimState): number {
   return m;
 }
 
-/** 產生一發追蹤子彈：套用精準節拍（每 4 發必爆）與即時傷害倍率 */
-function fireBullet(s: SimState, target: Enemy): void {
+const SAT_ORBIT = TOWER_RADIUS + 46;
+const SAT_FIRE_CD = 1.1;
+
+/** 穿透彈可再貫穿的敵人數（軌道砲大幅提升） */
+function pierceCount(s: SimState): number {
+  if (!hasPerk(s.perks, 'pierce')) return 0;
+  return hasPerk(s.perks, 'railgun') ? 5 : 2;
+}
+
+/** 多重射擊的額外目標數（多重射擊 +1、齊射再 +1） */
+function multishotExtra(s: SimState): number {
+  return (hasPerk(s.perks, 'multishot') ? 1 : 0) + (hasPerk(s.perks, 'volley') ? 1 : 0);
+}
+
+/** 產生一發追蹤子彈：套用精準節拍（每 4 發必爆）、即時傷害倍率與穿透設定 */
+function fireBullet(s: SimState, target: Enemy, ox = 0, oy = 0): void {
   s.shotCount++;
   const forced = hasPerk(s.perks, 'precision') && s.shotCount % 4 === 0;
   const crit = forced || s.rng() < s.stats.critChance;
+  const pierce = pierceCount(s);
   s.bullets.push({
-    x: 0,
-    y: 0,
+    x: ox,
+    y: oy,
     targetId: target.id,
     speed: BULLET_SPEED,
     dmg: s.stats.damage * combatDamageMult(s) * (crit ? s.stats.critFactor : 1),
     crit,
+    ...(pierce > 0 ? { pierce, hitIds: [], pierceRamp: hasPerk(s.perks, 'railgun') ? 0.15 : 0 } : {}),
   });
 }
 
@@ -308,6 +329,23 @@ function killEnemy(s: SimState, e: Enemy): void {
       s.enemies.push(child);
     }
     s.events.push({ type: 'summon', x: e.x, y: e.y });
+  }
+}
+
+/** 連鎖閃電：從命中點電弧跳附近敵人（超導體時弧數更多、對凍結敵人加倍） */
+function chainLightning(s: SimState, sourceId: number, hx: number, hy: number): void {
+  const arcs = hasPerk(s.perks, 'superconductor') ? 5 : 3;
+  let px = hx;
+  let py = hy;
+  for (const e of nearestEnemies(s, hx, hy, arcs, sourceId)) {
+    let d = s.stats.damage * 0.6;
+    if (hasPerk(s.perks, 'superconductor') && e.frozenTime > 0) d *= 2;
+    s.events.push({ type: 'chain', x1: px, y1: py, x2: e.x, y2: e.y, crit: true });
+    px = e.x;
+    py = e.y;
+    e.hp -= d;
+    s.events.push({ type: 'hit', id: e.id, x: e.x, y: e.y, dmg: d, crit: false });
+    if (e.hp <= 0) killEnemy(s, e);
   }
 }
 
@@ -564,10 +602,38 @@ export function step(s: SimState, dt: number): void {
       break;
     }
     fireBullet(s, target);
+    // 多重射擊：同時攻擊其餘最近的敵人
+    const extra = multishotExtra(s);
+    if (extra > 0) {
+      for (const e of nearestEnemies(s, 0, 0, extra, target.id)) fireBullet(s, e);
+    }
     // 雙重射擊：機率立刻追加一發（不佔冷卻）
     if (hasPerk(s.perks, 'doubleTap') && s.rng() < 0.14) fireBullet(s, target);
     s.events.push({ type: 'fire', angle: Math.atan2(target.y, target.x) });
     s.attackTimer += cooldown;
+  }
+
+  // 軌道衛星：繞塔飛行、週期自動對最近敵人開火
+  if (hasPerk(s.perks, 'satellite')) {
+    s.satAngle += dt * 1.7;
+    s.satTimer -= dt;
+    if (s.satTimer <= 0) {
+      const sx = Math.cos(s.satAngle) * SAT_ORBIT;
+      const sy = Math.sin(s.satAngle) * SAT_ORBIT;
+      let tgt: Enemy | null = null;
+      let best = Infinity;
+      for (const e of s.enemies) {
+        const d = (e.x - sx) ** 2 + (e.y - sy) ** 2;
+        if (d < best) { best = d; tgt = e; }
+      }
+      if (tgt) {
+        s.satTimer += SAT_FIRE_CD;
+        s.bullets.push({ x: sx, y: sy, targetId: tgt.id, speed: BULLET_SPEED, dmg: s.stats.damage * 0.7, crit: false });
+        s.events.push({ type: 'fire', angle: Math.atan2(tgt.y - sy, tgt.x - sx) });
+      } else {
+        s.satTimer = 0;
+      }
+    }
   }
 
   // 子彈追蹤與命中
@@ -604,12 +670,35 @@ export function step(s: SimState, dt: number): void {
       }
       if (hasPerk(s.perks, 'cryoRounds')) applyFrost(s, target);
       s.events.push({ type: 'hit', id: target.id, x: target.x, y: target.y, dmg, crit: b.crit });
-      s.bullets.splice(i, 1);
       const hx = target.x;
       const hy = target.y;
+      // 連鎖閃電：暴擊時電弧跳附近敵人
+      if (b.crit && hasPerk(s.perks, 'chainLightning')) chainLightning(s, target.id, hx, hy);
+      // 穿透彈：還能貫穿就續飛下一名（軌道砲每穿一名加成傷害），否則移除
+      let removed = false;
+      if (b.pierce && b.pierce > 0) {
+        b.pierce--;
+        (b.hitIds ??= []).push(target.id);
+        if (b.pierceRamp) b.dmg *= 1 + b.pierceRamp;
+        const next = s.enemies
+          .filter((e) => e.id !== target.id && !b.hitIds!.includes(e.id))
+          .map((e) => ({ e, d: (e.x - hx) ** 2 + (e.y - hy) ** 2 }))
+          .sort((a, c) => a.d - c.d || a.e.id - c.e.id)[0];
+        if (next) {
+          b.x = hx;
+          b.y = hy;
+          b.targetId = next.e.id;
+        } else {
+          s.bullets.splice(i, 1);
+          removed = true;
+        }
+      } else {
+        s.bullets.splice(i, 1);
+        removed = true;
+      }
       if (target.hp <= 0) killEnemy(s, target);
-      // 彈射卡：多重射擊——子彈鏈跳到最近的其他敵人（確定性：依距離、id 排序）
-      if (s.mods.bounce > 0) {
+      // 彈射卡：子彈鏈跳到最近的其他敵人（穿透中只在最後一擊觸發，避免過度疊加）
+      if (removed && s.mods.bounce > 0) {
         const bounceDmg = dmg * 0.6;
         const cands = s.enemies
           .filter((e) => e.id !== b.targetId)
@@ -655,7 +744,9 @@ export function buyInRunUpgrade(s: SimState, upgradeId: string): boolean {
   if (isMaxed(def, level)) return false;
   const cost = upgradeCost(def, level);
   if (s.cash < cost) return false;
-  s.cash -= cost;
+  // 免費升級機率：擲骰命中則不扣現金（chance=0 時不動用 RNG，保持既有確定性）
+  const free = s.stats.freeUpgradeChance > 0 && s.rng() < s.stats.freeUpgradeChance;
+  if (!free) s.cash -= cost;
   s.inRunLevels[upgradeId] = level + 1;
   recomputeStats(s);
   return true;

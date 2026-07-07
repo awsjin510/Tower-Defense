@@ -197,6 +197,7 @@ void initCloud().catch(() => {
 function fmtStatDelta(stat: StatId, v: number): string {
   switch (stat) {
     case 'critChance':
+    case 'freeUpgradeChance':
       return `+${(v * 100).toFixed(1)}%`;
     case 'critFactor':
     case 'cashPerKill':
@@ -214,6 +215,7 @@ function fmtStatDelta(stat: StatId, v: number): string {
 function fmtStatValue(stat: StatId, v: number): string {
   switch (stat) {
     case 'critChance':
+    case 'freeUpgradeChance':
       return `${(v * 100).toFixed(1)}%`;
     case 'critFactor':
     case 'cashPerKill':
@@ -663,12 +665,25 @@ setInterval(tickResearch, 1000);
 
 const battleButtons: UpgradeButton[] = IN_RUN_UPGRADES.map((def) =>
   makeUpgradeButton(def, () => {
-    if (sim && buyInRunUpgrade(sim, def.id)) {
-      Sound.play('buy');
+    if (!sim) return;
+    const cashBefore = sim.cash;
+    if (buyInRunUpgrade(sim, def.id)) {
+      // 免費升級機率命中：現金未扣，給金幣音效與提示
+      const wasFree = sim.cash === cashBefore;
+      Sound.play(wasFree ? 'coin' : 'buy');
+      if (wasFree) flashFreeUpgrade();
       refreshBattleButtons();
     }
   })
 );
+
+/** 免費升級命中時的短暫提示 */
+function flashFreeUpgrade(): void {
+  const banner = $('#free-banner');
+  banner.classList.remove('show');
+  void banner.offsetWidth;
+  banner.classList.add('show');
+}
 
 const TABS: Array<{ id: UpgradeCategory; name: string; icon: IconName }> = [
   { id: 'attack', name: '攻擊', icon: 'attack' },
@@ -810,6 +825,7 @@ function schoolLink(school: string, prerequisite: string | null): string {
   if (prerequisite) return `聯動：${prerequisite}`;
   if (school === 'fire') return '燃燒流核心';
   if (school === 'frost') return '冰凍流核心';
+  if (school === 'form') return '攻擊形態';
   if (school === 'trigger') return '觸發效果';
   if (school === 'risk') return '高風險';
   return '即時強化';
@@ -824,7 +840,7 @@ function renderPerkCards(wave: number, choices: string[]): void {
     if (!def) continue;
     const btn = document.createElement('button');
     const school = perkSchool(def);
-    const visualIcon: IconName = school === 'fire' ? 'fire' : school === 'frost' ? 'frost' : school === 'risk' ? 'risk' : 'perk';
+    const visualIcon: IconName = school === 'fire' ? 'fire' : school === 'frost' ? 'frost' : school === 'form' ? 'attack' : school === 'risk' ? 'risk' : 'perk';
     const owned = sim ? perkStacks(sim.perks, id) : 0;
     btn.className = `perk-card school-${school} rar-${def.rarity}${def.risky ? ' risky' : ''}`;
     const prerequisite = def.prerequisite ? perkById(def.prerequisite)?.name ?? null : null;

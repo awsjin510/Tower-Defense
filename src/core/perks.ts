@@ -29,7 +29,14 @@ export type PerkRule =
   | 'momentum'
   | 'frostNova'
   | 'lastStand'
-  | 'apex';
+  | 'apex'
+  | 'multishot'
+  | 'volley'
+  | 'pierce'
+  | 'railgun'
+  | 'chainLightning'
+  | 'superconductor'
+  | 'satellite';
 
 export interface PerkDef {
   id: string;
@@ -79,13 +86,15 @@ export function perkById(id: string): PerkDef | undefined {
   return PERKS.find((p) => p.id === id);
 }
 
-export type PerkSchool = 'fire' | 'frost' | 'risk' | 'trigger' | 'stat';
+export type PerkSchool = 'fire' | 'frost' | 'form' | 'risk' | 'trigger' | 'stat';
 const FIRE_RULES: PerkRule[] = ['burn', 'burnCrit', 'wildfire'];
 const FROST_RULES: PerkRule[] = ['frost', 'brittle', 'shatter'];
+const FORM_RULES: PerkRule[] = ['multishot', 'volley', 'pierce', 'railgun', 'chainLightning', 'superconductor', 'satellite'];
 
 export function perkSchool(def: PerkDef): PerkSchool {
   if (def.rule && FIRE_RULES.includes(def.rule)) return 'fire';
   if (def.rule && FROST_RULES.includes(def.rule)) return 'frost';
+  if (def.rule && FORM_RULES.includes(def.rule)) return 'form';
   if (def.risky) return 'risk';
   if (def.rule) return 'trigger';
   return 'stat';
