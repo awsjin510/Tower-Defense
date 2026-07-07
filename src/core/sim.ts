@@ -380,11 +380,17 @@ function spawnEnemy(s: SimState, typeId: string): void {
 
 function killEnemy(s: SimState, e: Enemy): void {
   const coinMult = coinMultiplier(s); // 黃金塔啟用時倍增
-  const baseCoins = e.coinValue * s.stats.coinBonus;
-  s.cash += e.cashValue * s.stats.cashPerKill * coinMult;
-  s.coinsEarned += e.coinValue * s.stats.coinBonus * coinMult;
+  const elite = !['normal', 'fast'].includes(e.typeId);
+  const bounty = elite ? s.stats.eliteBounty * (e.typeId === 'boss' && (s.inRunLevels.eliteBounty ?? 0) >= 10 ? 1.25 : 1) : 1;
+  const baseCoins = e.coinValue * s.stats.coinBonus * bounty;
+  s.cash += e.cashValue * s.stats.cashPerKill * coinMult * bounty;
+  s.coinsEarned += e.coinValue * s.stats.coinBonus * coinMult * bounty;
   if (coinMult > 1) s.ultCoins.golden = (s.ultCoins.golden ?? 0) + baseCoins * (coinMult - 1);
   s.kills++;
+  if (s.stats.killHeal > 0) {
+    const heal = s.stats.maxHealth * s.stats.killHeal * (elite && (s.inRunLevels.killHeal ?? 0) >= 10 ? 2 : 1);
+    s.towerHp = Math.min(s.stats.maxHealth, s.towerHp + heal);
+  }
   for (const a of s.ultActive) if (a.id === 'golden') a.kills = (a.kills ?? 0) + 1;
   chargeUltimates(s, e.typeId === 'boss' ? 25 : e.eliteAffix ? 5 : 1.6);
   // 觸發式 Perk：賞金爆裂（機率暴賞）、殲滅協議（永久傷害疊層）、殺意連鎖（連殺攻速）
@@ -749,8 +755,10 @@ export function step(s: SimState, dt: number): void {
         }
         if (e.bossArchetype === 'leech') e.hp = Math.min(e.maxHp, e.hp + e.maxHp * .08);
         // 荊棘反傷卡：近戰攻擊者受到一部分傷害反彈
-        if (s.mods.thorns > 0 && e.attackRange === 0) {
-          damageEnemy(s, e, e.dmg * s.mods.thorns, 'thorns');
+        const thorns = s.mods.thorns + s.stats.thorns;
+        const canReflect = e.attackRange === 0 || (s.inRunLevels.thorns ?? 0) >= 10;
+        if (thorns > 0 && canReflect) {
+          damageEnemy(s, e, e.dmg * thorns, 'thorns');
           if (e.hp <= 0) killEnemy(s, e);
         }
         e.attackTimer += ENEMY_ATTACK_INTERVAL;
@@ -871,8 +879,9 @@ export function step(s: SimState, dt: number): void {
       if (hasPerk(s.perks, 'cryoRounds')) applyFrost(s, target);
       if (s.stats.knockback > 0 && target.typeId !== 'boss') {
         const d = Math.hypot(target.x, target.y) || 1;
-        target.x += (target.x / d) * s.stats.knockback;
-        target.y += (target.y / d) * s.stats.knockback;
+        const force = s.stats.knockback * ((s.inRunLevels.knockback ?? 0) >= 10 ? 1.5 : 1);
+        target.x += (target.x / d) * force;
+        target.y += (target.y / d) * force;
       }
       const hx = target.x;
       const hy = target.y;
@@ -906,6 +915,16 @@ export function step(s: SimState, dt: number): void {
       if ((s.inRunLevels.damage ?? 0) >= 20) {
         for (const n of nearestEnemies(s, hx, hy, 3, target.id).filter((n) => (n.x - hx) ** 2 + (n.y - hy) ** 2 <= 70 ** 2)) {
           const splash = s.stats.damage * 0.35;
+          damageEnemy(s, n, splash, 'splash');
+          if (n.hp <= 0) killEnemy(s, n);
+        }
+      }
+      // 爆破彈藥：機率造成範圍傷害；Lv.10 專精提高半徑與倍率。
+      if (s.stats.splashChance > 0 && s.rng() < s.stats.splashChance) {
+        const specialized = (s.inRunLevels.splashChance ?? 0) >= 10;
+        const radius = specialized ? 105 : 72;
+        const splash = dmg * (specialized ? 0.5 : 0.32);
+        for (const n of s.enemies.filter((n) => n.id !== target.id && (n.x - hx) ** 2 + (n.y - hy) ** 2 <= radius ** 2)) {
           damageEnemy(s, n, splash, 'splash');
           if (n.hp <= 0) killEnemy(s, n);
         }
@@ -988,7 +1007,7 @@ export function buyInRunUpgrade(s: SimState, upgradeId: string): boolean {
   if (!def || s.over) return false;
   const level = s.inRunLevels[upgradeId] ?? 0;
   if (isMaxed(def, level)) return false;
-  const cost = upgradeCost(def, level);
+  const cost = inRunUpgradeCost(s, def, level);
   if (s.cash < cost) return false;
   // 免費升級機率：擲骰命中則不扣現金（chance=0 時不動用 RNG，保持既有確定性）
   const free = s.stats.freeUpgradeChance > 0 && s.rng() < s.stats.freeUpgradeChance;
@@ -996,6 +1015,10 @@ export function buyInRunUpgrade(s: SimState, upgradeId: string): boolean {
   s.inRunLevels[upgradeId] = level + 1;
   recomputeStats(s);
   return true;
+}
+
+export function inRunUpgradeCost(s: Pick<SimState, 'stats'>, def: (typeof IN_RUN_UPGRADES)[number], level: number): number {
+  return Math.max(1, Math.ceil(upgradeCost(def, level) * (1 - s.stats.upgradeDiscount)));
 }
 
 /** 從待選 Perk 中選一個；成功時回傳 true 並恢復模擬 */

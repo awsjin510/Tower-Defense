@@ -1,4 +1,4 @@
-import { activateUltimate, buyInRunUpgrade, choosePerk, chooseRoute, currentRerollCost, cycleTargetPriority, newRun, rerollPerks, setSpawnViewport, skipPerks, step, TICK_DT, type SimState } from './core/sim';
+import { activateUltimate, buyInRunUpgrade, choosePerk, chooseRoute, currentRerollCost, cycleTargetPriority, inRunUpgradeCost, newRun, rerollPerks, setSpawnViewport, skipPerks, step, TICK_DT, type SimState } from './core/sim';
 import { IN_RUN_UPGRADES, WORKSHOP_UPGRADES, computeStats, nextMilestone } from './core/stats';
 import { formatNumber, isMaxed, upgradeCost } from './core/economy';
 import { applyPerks, perkById, perkRarity, perkSchool, perkStacks } from './core/perks';
@@ -244,12 +244,17 @@ function fmtStatValue(stat: StatId, v: number): string {
     case 'armorPen':
     case 'damageReduction':
     case 'interestRate':
+    case 'splashChance':
+    case 'thorns':
+    case 'killHeal':
+    case 'upgradeDiscount':
       return `${(v * 100).toFixed(1)}%`;
     case 'critFactor':
     case 'cashPerKill':
     case 'coinBonus':
     case 'elementalPower':
     case 'eliteDamage':
+    case 'eliteBounty':
       return `x${v.toFixed(2)}`;
     case 'attackSpeed':
       return v.toFixed(2);
@@ -290,11 +295,12 @@ function refreshUpgradeButton(
   currency: number,
   currencyClass: string,
   currentValue: number,
-  nextValue: number
+  nextValue: number,
+  actualCost?: number
 ): void {
   const { def, el } = btn;
   const maxed = isMaxed(def, level);
-  const cost = upgradeCost(def, level);
+  const cost = actualCost ?? upgradeCost(def, level);
   (el.querySelector('.name') as HTMLElement).textContent = `${def.name} Lv.${level}`;
   // 目前的實際數值（含工坊 + 場內 + Perk 的總和），一眼看懂目前狀態
   (el.querySelector('.current') as HTMLElement).textContent = fmtStatValue(def.stat, currentValue);
@@ -845,8 +851,32 @@ function buildTabs(): void {
 function buildBattleGrid(): void {
   const grid = $('#battle-grid');
   grid.innerHTML = '';
-  for (const btn of battleButtons) {
-    if (btn.def.category === activeTab) grid.appendChild(btn.el);
+  const schools: Record<UpgradeCategory, Array<{ name: string; ids: string[] }>> = {
+    attack: [
+      { name: '火力核心', ids: ['damage','critChance','critFactor','eliteDamage'] },
+      { name: '速射武裝', ids: ['attackSpeed','projectileSpeed','range','armorPen'] },
+      { name: '戰術彈藥', ids: ['elementalPower','knockback','splashChance'] },
+    ],
+    defense: [
+      { name: '堡壘裝甲', ids: ['maxHealth','armor','damageReduction'] },
+      { name: '護盾修復', ids: ['energyShield','healthRegen','killHeal'] },
+      { name: '反擊系統', ids: ['thorns'] },
+    ],
+    economy: [
+      { name: '戰場收入', ids: ['cashPerKill','cashPerWave','eliteBounty'] },
+      { name: '投資協議', ids: ['interestRate','upgradeDiscount'] },
+      { name: '永久收益', ids: ['coinBonus'] },
+    ],
+  };
+  for (const school of schools[activeTab]) {
+    const header = document.createElement('div');
+    header.className = 'upgrade-school';
+    header.textContent = school.name;
+    grid.appendChild(header);
+    for (const id of school.ids) {
+      const btn = battleButtons.find((candidate) => candidate.def.id === id);
+      if (btn) grid.appendChild(btn.el);
+    }
   }
   refreshBattleButtons();
 }
@@ -954,7 +984,8 @@ function refreshBattleButtons(): void {
     const next = computeStats(sim.workshopLevels, nextLevels, sim.researchLevels);
     applyPerks(next, sim.perks);
     applyCardStatMods(next, sim.mods.statMods);
-    refreshUpgradeButton(btn, sim.inRunLevels[btn.def.id] ?? 0, sim.cash, 'cash', sim.stats[btn.def.stat], next[btn.def.stat]);
+    const level = sim.inRunLevels[btn.def.id] ?? 0;
+    refreshUpgradeButton(btn, level, sim.cash, 'cash', sim.stats[btn.def.stat], next[btn.def.stat], inRunUpgradeCost(sim, btn.def, level));
   }
 }
 

@@ -16,9 +16,12 @@ function enemy(id: number, typeId: string, x: number, hp: number, attackRange = 
 }
 
 describe('stage 1 upgrades and targeting', () => {
-  it('場內升級由 9 項擴充為 18 項，三類都有新選擇', () => {
-    expect(IN_RUN_UPGRADES).toHaveLength(18);
+  it('場內升級擴充為 24 項，三類都有機制型選擇', () => {
+    expect(IN_RUN_UPGRADES).toHaveLength(24);
     for (const id of ['projectileSpeed', 'armorPen', 'eliteDamage', 'armor', 'damageReduction', 'energyShield', 'interestRate', 'coinBonus', 'elementalPower']) {
+      expect(IN_RUN_UPGRADES.some((u) => u.id === id)).toBe(true);
+    }
+    for (const id of ['knockback', 'splashChance', 'thorns', 'killHeal', 'upgradeDiscount', 'eliteBounty']) {
       expect(IN_RUN_UPGRADES.some((u) => u.id === id)).toBe(true);
     }
   });

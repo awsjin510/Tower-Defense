@@ -20,7 +20,12 @@ export type StatId =
   | 'armor'
   | 'damageReduction'
   | 'energyShield'
-  | 'interestRate';
+  | 'interestRate'
+  | 'splashChance'
+  | 'thorns'
+  | 'killHeal'
+  | 'upgradeDiscount'
+  | 'eliteBounty';
 
 export type TargetPriority = 'closest' | 'farthest' | 'highHp' | 'lowHp' | 'elite' | 'ranged';
 export type EliteAffix = 'shielded' | 'regenerating' | 'enraged' | 'stealth' | 'volatile' | 'healer' | 'reflective' | 'blinking';

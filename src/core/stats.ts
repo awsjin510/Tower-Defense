@@ -28,6 +28,11 @@ export const BASE_STATS: Stats = {
   damageReduction: 0,
   energyShield: 0,
   interestRate: 0,
+  splashChance: 0,
+  thorns: 0,
+  killHeal: 0,
+  upgradeDiscount: 0,
+  eliteBounty: 1,
 };
 
 export type Levels = Record<string, number>;
@@ -40,6 +45,12 @@ export const UPGRADE_MILESTONES: Record<string, UpgradeMilestone[]> = {
   maxHealth: [{ level: 20, name: '護盾重整', desc: '每波獲得 10% 最大生命護盾' }],
   healthRegen: [{ level: 20, name: '溢能修復', desc: '滿血時回復轉為護盾' }],
   interestRate: [{ level: 10, name: '頭目複利', desc: 'Boss 波利息翻倍' }],
+  knockback: [{ level: 10, name: '震盪核心', desc: '擊退效果提升 50%' }],
+  splashChance: [{ level: 10, name: '連鎖爆破', desc: '爆炸半徑與傷害提升' }],
+  thorns: [{ level: 10, name: '尖刺堡壘', desc: '反傷可作用於遠程敵人' }],
+  killHeal: [{ level: 10, name: '收割修復', desc: '擊殺菁英時回復加倍' }],
+  upgradeDiscount: [{ level: 10, name: '批量採購', desc: '折扣上限提高至 35%' }],
+  eliteBounty: [{ level: 10, name: '頭目懸賞', desc: 'Boss 獎勵再提高 25%' }],
 };
 
 export function nextMilestone(id: string, level: number): UpgradeMilestone | undefined {
@@ -62,5 +73,9 @@ export function computeStats(workshopLevels: Levels, inRunLevels: Levels, resear
   stats.critChance = Math.min(stats.critChance, 0.8);
   stats.damageReduction = Math.min(stats.damageReduction, 0.65);
   stats.armorPen = Math.min(stats.armorPen, 0.8);
+  stats.splashChance = Math.min(stats.splashChance, 0.75);
+  stats.thorns = Math.min(stats.thorns, 1.5);
+  stats.killHeal = Math.min(stats.killHeal, 0.08);
+  stats.upgradeDiscount = Math.min(stats.upgradeDiscount, 0.35);
   return stats;
 }

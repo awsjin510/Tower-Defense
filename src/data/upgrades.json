@@ -18,6 +18,12 @@
     ,{ "id": "interestRate", "name": "現金利息", "category": "economy", "stat": "interestRate", "baseCost": 130, "costGrowth": 1.4, "valuePerLevel": 0.01, "maxLevel": 20 }
     ,{ "id": "coinBonus", "name": "本場金幣", "category": "economy", "stat": "coinBonus", "baseCost": 150, "costGrowth": 1.43, "valuePerLevel": 0.04, "maxLevel": 25 }
     ,{ "id": "elementalPower", "name": "元素增幅", "category": "attack", "stat": "elementalPower", "baseCost": 165, "costGrowth": 1.39, "valuePerLevel": 0.06, "maxLevel": 25 }
+    ,{ "id": "knockback", "name": "震盪彈頭", "category": "attack", "stat": "knockback", "baseCost": 95, "costGrowth": 1.31, "valuePerLevel": 1.8, "maxLevel": 30 }
+    ,{ "id": "splashChance", "name": "爆破彈藥", "category": "attack", "stat": "splashChance", "baseCost": 135, "costGrowth": 1.36, "valuePerLevel": 0.025, "maxLevel": 24 }
+    ,{ "id": "thorns", "name": "荊棘裝甲", "category": "defense", "stat": "thorns", "baseCost": 120, "costGrowth": 1.35, "valuePerLevel": 0.045, "maxLevel": 25 }
+    ,{ "id": "killHeal", "name": "擊殺修復", "category": "defense", "stat": "killHeal", "baseCost": 145, "costGrowth": 1.38, "valuePerLevel": 0.0025, "maxLevel": 20 }
+    ,{ "id": "upgradeDiscount", "name": "升級折扣", "category": "economy", "stat": "upgradeDiscount", "baseCost": 140, "costGrowth": 1.4, "valuePerLevel": 0.012, "maxLevel": 20 }
+    ,{ "id": "eliteBounty", "name": "菁英懸賞", "category": "economy", "stat": "eliteBounty", "baseCost": 160, "costGrowth": 1.4, "valuePerLevel": 0.06, "maxLevel": 20 }
   ],
   "workshop": [
     { "id": "ws_damage", "name": "傷害", "category": "attack", "stat": "damage", "baseCost": 10, "costGrowth": 1.22, "valuePerLevel": 3, "maxLevel": 0 },
