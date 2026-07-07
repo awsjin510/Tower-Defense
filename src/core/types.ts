@@ -11,7 +11,22 @@ export type StatId =
   | 'cashPerKill'
   | 'cashPerWave'
   | 'coinBonus'
-  | 'freeUpgradeChance';
+  | 'freeUpgradeChance'
+  | 'projectileSpeed'
+  | 'armorPen'
+  | 'knockback'
+  | 'elementalPower'
+  | 'eliteDamage'
+  | 'armor'
+  | 'damageReduction'
+  | 'energyShield'
+  | 'interestRate';
+
+export type TargetPriority = 'closest' | 'farthest' | 'highHp' | 'lowHp' | 'elite' | 'ranged';
+export type EliteAffix = 'shielded' | 'regenerating' | 'enraged' | 'stealth' | 'volatile' | 'healer' | 'reflective' | 'blinking';
+export type BossArchetype = 'swarm' | 'bulwark' | 'leech' | 'chrono';
+export type RouteId = 'safe' | 'danger';
+export type DamageSource = 'direct' | 'burn' | 'chain' | 'splash' | 'bounce' | 'thorns' | 'ultimate' | 'satellite';
 
 export interface UpgradeDef {
   id: string;
@@ -110,6 +125,12 @@ export interface Enemy {
   zoneTimer: number;
   zoneEmpower: number;
   canSplit: boolean;
+  eliteAffix?: EliteAffix;
+  affixTimer: number;
+  affixShield: number;
+  affixTriggered: boolean;
+  bossArchetype?: BossArchetype;
+  bossPhase: number;
 }
 
 export interface Bullet {
@@ -125,6 +146,7 @@ export interface Bullet {
   hitIds?: number[];
   /** 軌道砲：每次貫穿累積的傷害加成倍率（未填 = 無衰減也無加成） */
   pierceRamp?: number;
+  source?: DamageSource;
 }
 
 /**
@@ -144,4 +166,5 @@ export type SimEvent =
   | { type: 'ultActivate'; id: string; color: string }
   | { type: 'chain'; x1: number; y1: number; x2: number; y2: number; crit: boolean }
   | { type: 'status'; id: number; x: number; y: number; status: 'burn' | 'frost' | 'freeze' | 'empower' }
-  | { type: 'zonePulse'; zoneId: string; color: string };
+  | { type: 'zonePulse'; zoneId: string; color: string }
+  | { type: 'routeOffer'; wave: number };

@@ -1,10 +1,10 @@
 {
   "config": {
     "baseSlots": 2,
-    "maxSlots": 6,
+    "maxSlots": 8,
     "starMax": 3,
     "starUpCost": { "2": 300, "3": 900 },
-    "slotCost": { "3": 800, "4": 2400, "5": 6500, "6": 16000 }
+    "slotCost": { "3": 800, "4": 2400, "5": 6500, "6": 16000, "7": 38000, "8": 90000 }
   },
   "cards": [
     { "id": "as",         "name": "攻擊速度",   "cat": "stat", "icon": "⚡", "color": "#e05580", "unlockWave": 0,  "effect": { "kind": "stat", "stat": "attackSpeed", "mode": "mult", "perStar": 0.08 }, "bonus": { "atStar": 3, "kind": "bounce", "value": 1, "desc": "子彈彈射 +1 目標" } },
@@ -24,6 +24,27 @@
     { "id": "thorns",     "name": "荊棘反傷",   "cat": "rule", "icon": "🌵", "color": "#58c6ff", "unlockWave": 26, "effect": { "kind": "thorns",    "perStar": 0.2 } },
     { "id": "bossbane",   "name": "頭目剋星",   "cat": "cond", "icon": "☠️", "color": "#ff6b3d", "unlockWave": 30, "set": "slayer", "effect": { "kind": "bossDamage", "perStar": 0.3 } },
     { "id": "strategist", "name": "策士",       "cat": "cond", "icon": "🃏", "color": "#b878ff", "unlockWave": 35, "effect": { "kind": "extraPerk",  "perStar": 1 } },
-    { "id": "voidreaver", "name": "虛空掠奪者", "cat": "cond", "icon": "🌀", "color": "#b878ff", "unlockWave": 40, "effect": { "kind": "zoneDamage", "zoneId": "void", "perStar": 0.25 } }
+    { "id": "voidreaver", "name": "虛空掠奪者", "cat": "cond", "icon": "🌀", "color": "#b878ff", "unlockWave": 40, "effect": { "kind": "zoneDamage", "zoneId": "void", "perStar": 0.25 } },
+
+    { "id": "armorplate", "name": "複合裝甲", "cat": "stat", "icon": "🧱", "color": "#58a6ff", "unlockWave": 10, "set": "fortress", "effect": { "kind": "stat", "stat": "armor", "mode": "add", "perStar": 2.5 } },
+    { "id": "barrier", "name": "護盾矩陣", "cat": "rule", "icon": "🔷", "color": "#58c6ff", "unlockWave": 15, "set": "fortress", "effect": { "kind": "stat", "stat": "energyShield", "mode": "add", "perStar": 30 } },
+    { "id": "penetrator", "name": "穿甲校準", "cat": "stat", "icon": "🗡️", "color": "#ff8f5b", "unlockWave": 18, "set": "rail", "effect": { "kind": "stat", "stat": "armorPen", "mode": "add", "perStar": 0.06 } },
+    { "id": "repulsor", "name": "擊退矩陣", "cat": "rule", "icon": "💨", "color": "#8cb8ff", "unlockWave": 21, "set": "rail", "effect": { "kind": "stat", "stat": "knockback", "mode": "add", "perStar": 3 } },
+    { "id": "elemental", "name": "元素反應爐", "cat": "stat", "icon": "🔆", "color": "#ff7a3d", "unlockWave": 24, "set": "flame", "effect": { "kind": "stat", "stat": "elementalPower", "mode": "add", "perStar": 0.12 } },
+    { "id": "elitehunter", "name": "精英獵手", "cat": "cond", "icon": "🎖️", "color": "#f0a03c", "unlockWave": 28, "set": "tactician", "effect": { "kind": "stat", "stat": "eliteDamage", "mode": "add", "perStar": 0.15 } },
+    { "id": "compound", "name": "複利協議", "cat": "rule", "icon": "📈", "color": "#e3b341", "unlockWave": 32, "set": "econ", "effect": { "kind": "stat", "stat": "interestRate", "mode": "add", "perStar": 0.015 } },
+    { "id": "salvage", "name": "戰場回收", "cat": "cond", "icon": "♻️", "color": "#56d364", "unlockWave": 36, "set": "tactician", "effect": { "kind": "stat", "stat": "coinBonus", "mode": "mult", "perStar": 0.10 } },
+    { "id": "thermalcore", "name": "熱能核心", "cat": "origin", "icon": "☀️", "color": "#ff5c28", "unlockWave": 42, "set": "flame", "effect": { "kind": "startPerk", "perks": ["incendiary"], "perStar": 0 }, "bonus": { "atStar": 3, "kind": "startPerk", "perks": ["volatileFuel"], "desc": "額外自帶「揮發燃料」" } },
+    { "id": "glacialcore", "name": "永凍核心", "cat": "origin", "icon": "💠", "color": "#72d8ff", "unlockWave": 46, "set": "frost", "effect": { "kind": "startPerk", "perks": ["cryoRounds"], "perStar": 0 }, "bonus": { "atStar": 3, "kind": "startPerk", "perks": ["frostNova"], "desc": "額外自帶「冰霜新星」" } },
+    { "id": "thermalshock", "name": "熱衝擊協議", "cat": "origin", "icon": "🌡️", "color": "#ff7043", "unlockWave": 25, "unlockTier": 2, "set": "fusion", "effect": { "kind": "startPerk", "perks": ["incendiary", "cryoRounds"], "perStar": 0 } },
+    { "id": "stormcoil", "name": "風暴線圈", "cat": "origin", "icon": "🌩️", "color": "#9d8cff", "unlockWave": 30, "unlockKills": 1500, "set": "storm", "effect": { "kind": "startPerk", "perks": ["chainLightning"], "perStar": 0 } },
+    { "id": "supercap", "name": "超導電容", "cat": "stat", "icon": "🔋", "color": "#72d8ff", "unlockWave": 35, "unlockTier": 3, "set": "storm", "effect": { "kind": "stat", "stat": "critFactor", "mode": "add", "perStar": 0.18 }, "bonus": { "atStar": 3, "kind": "startPerk", "perks": ["superconductor"], "desc": "額外自帶「超導體」" } },
+    { "id": "orbitaldock", "name": "軌道船塢", "cat": "origin", "icon": "🛰️", "color": "#58c6ff", "unlockWave": 32, "unlockTier": 3, "set": "orbit", "effect": { "kind": "startPerk", "perks": ["satellite"], "perStar": 0 } },
+    { "id": "twinorbit", "name": "雙星編隊", "cat": "origin", "icon": "☄️", "color": "#b878ff", "unlockWave": 45, "unlockRuns": 20, "set": "orbit", "effect": { "kind": "startPerk", "perks": ["satellite", "multishot"], "perStar": 0 } },
+    { "id": "fortressorigin", "name": "不落堡壘", "cat": "origin", "icon": "🏰", "color": "#58a6ff", "unlockWave": 38, "unlockRuns": 25, "set": "fortress", "effect": { "kind": "startPerk", "perks": ["lastStand"], "perStar": 0 } },
+    { "id": "execution", "name": "斬殺授權", "cat": "origin", "icon": "⚔️", "color": "#ff6b3d", "unlockWave": 42, "unlockKills": 2500, "set": "tactician", "effect": { "kind": "startPerk", "perks": ["execute"], "perStar": 0 } },
+    { "id": "bountycharter", "name": "賞金特許", "cat": "origin", "icon": "📜", "color": "#e3b341", "unlockWave": 28, "unlockRuns": 15, "set": "econ", "effect": { "kind": "startPerk", "perks": ["bountyBurst"], "perStar": 0 } },
+    { "id": "phaselens", "name": "相位透鏡", "cat": "origin", "icon": "🔭", "color": "#8cb8ff", "unlockWave": 34, "unlockTier": 2, "set": "rail", "effect": { "kind": "startPerk", "perks": ["armorBreak"], "perStar": 0 } },
+    { "id": "voidanchor", "name": "虛空錨", "cat": "origin", "icon": "⚓", "color": "#9d6cff", "unlockWave": 50, "unlockTier": 4, "set": "orbit", "effect": { "kind": "startPerk", "perks": ["pierce"], "perStar": 0 }, "bonus": { "atStar": 3, "kind": "startPerk", "perks": ["railgun"], "desc": "額外自帶「軌道砲」" } }
   ]
 }

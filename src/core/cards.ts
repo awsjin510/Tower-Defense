@@ -50,6 +50,9 @@ export interface CardDef {
   color: string;
   /** 歷史最高波次達到此值時自動解鎖（0 = 開場即有） */
   unlockWave: number;
+  unlockTier?: number;
+  unlockRuns?: number;
+  unlockKills?: number;
   effect: CardEffect;
   /** 複合附加效果（達星生效） */
   bonus?: CardBonus;
@@ -141,6 +144,53 @@ export const CARD_SETS: CardSet[] = [
       { n: 3, desc: '傷害再 +8%', apply: (m) => { m.statMods.push({ stat: 'damage', mult: 1.08 }); } },
     ],
   },
+  {
+    id: 'flame', name: '烈焰', members: ['emberstart', 'thermalcore', 'elemental'],
+    tiers: [
+      { n: 2, desc: '元素傷害 +18%', apply: (m) => { m.statMods.push({ stat: 'elementalPower', add: 0.18 }); } },
+      { n: 3, desc: '傷害 +12%', apply: (m) => { m.statMods.push({ stat: 'damage', mult: 1.12 }); } },
+    ],
+  },
+  {
+    id: 'frost', name: '永凍', members: ['frostcore', 'glacialcore', 'slowaura'],
+    tiers: [
+      { n: 2, desc: '減速靈氣 +10%', apply: (m) => { m.slowAura += 0.1; } },
+      { n: 3, desc: '元素傷害 +15%', apply: (m) => { m.statMods.push({ stat: 'elementalPower', add: 0.15 }); } },
+    ],
+  },
+  {
+    id: 'fortress', name: '堡壘', members: ['hp', 'armorplate', 'barrier'],
+    tiers: [
+      { n: 2, desc: '減傷 +8%', apply: (m) => { m.statMods.push({ stat: 'damageReduction', add: 0.08 }); } },
+      { n: 3, desc: '護盾 +20%', apply: (m) => { m.statMods.push({ stat: 'energyShield', mult: 1.2 }); } },
+    ],
+  },
+  {
+    id: 'rail', name: '動能', members: ['penetrator', 'repulsor', 'range'],
+    tiers: [
+      { n: 2, desc: '彈速 +15%', apply: (m) => { m.statMods.push({ stat: 'projectileSpeed', mult: 1.15 }); } },
+      { n: 3, desc: '精英傷害 +18%', apply: (m) => { m.statMods.push({ stat: 'eliteDamage', add: 0.18 }); } },
+    ],
+  },
+  {
+    id: 'tactician', name: '戰術', members: ['strategist', 'elitehunter', 'salvage'],
+    tiers: [
+      { n: 2, desc: '每殺金額 +12%', apply: (m) => { m.statMods.push({ stat: 'cashPerKill', mult: 1.12 }); } },
+      { n: 3, desc: 'Perk 選項 +1', apply: (m) => { m.extraPerkChoices += 1; } },
+    ],
+  },
+  { id: 'fusion', name: '熱電融合', members: ['thermalshock', 'stormcoil', 'thermalcore'], tiers: [
+    { n: 2, desc: '元素傷害 +20%', apply: (m) => { m.statMods.push({ stat: 'elementalPower', add: .2 }); } },
+    { n: 3, desc: '開局獲得超導體', apply: (m) => { m.startPerks.push('superconductor'); } },
+  ] },
+  { id: 'storm', name: '風暴網路', members: ['stormcoil', 'supercap', 'crit'], tiers: [
+    { n: 2, desc: '暴擊率 +5%', apply: (m) => { m.statMods.push({ stat: 'critChance', add: .05 }); } },
+    { n: 3, desc: '傷害 +15%', apply: (m) => { m.statMods.push({ stat: 'damage', mult: 1.15 }); } },
+  ] },
+  { id: 'orbit', name: '軌道艦隊', members: ['orbitaldock', 'twinorbit', 'voidanchor'], tiers: [
+    { n: 2, desc: '彈速 +20%', apply: (m) => { m.statMods.push({ stat: 'projectileSpeed', mult: 1.2 }); } },
+    { n: 3, desc: '開局獲得齊射', apply: (m) => { m.startPerks.push('volley'); } },
+  ] },
 ];
 
 /** 卡片在某星級的效果數值 */
@@ -231,6 +281,8 @@ export function applyCardStatMods(stats: Stats, statMods: RunMods['statMods']): 
     if (m.mult) stats[m.stat] *= m.mult;
   }
   stats.critChance = Math.min(stats.critChance, 0.8);
+  stats.damageReduction = Math.min(stats.damageReduction, 0.65);
+  stats.armorPen = Math.min(stats.armorPen, 0.8);
 }
 
 function perkNames(ids: string[] = []): string {
@@ -244,6 +296,7 @@ export function describeCard(def: CardDef, star: number): string {
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   switch (def.effect.kind) {
     case 'stat':
+      if (['armor', 'energyShield', 'knockback', 'projectileSpeed'].includes(def.effect.stat ?? '')) return `${def.name} +${Math.round(v)}`;
       return `${def.name} +${pct(v)}`;
     case 'bounce':
       return `子彈彈射 +${Math.round(v)} 目標`;

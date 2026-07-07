@@ -1,5 +1,5 @@
-import { activateUltimate, buyInRunUpgrade, choosePerk, currentRerollCost, newRun, rerollPerks, skipPerks, step, TICK_DT, type SimState } from './core/sim';
-import { IN_RUN_UPGRADES, WORKSHOP_UPGRADES, computeStats } from './core/stats';
+import { activateUltimate, buyInRunUpgrade, choosePerk, chooseRoute, currentRerollCost, cycleTargetPriority, newRun, rerollPerks, skipPerks, step, TICK_DT, type SimState } from './core/sim';
+import { IN_RUN_UPGRADES, WORKSHOP_UPGRADES, computeStats, nextMilestone } from './core/stats';
 import { formatNumber, isMaxed, upgradeCost } from './core/economy';
 import { applyPerks, perkById, perkRarity, perkSchool, perkStacks } from './core/perks';
 import { offlineCoins } from './core/offline';
@@ -14,6 +14,8 @@ import {
   starUpCost,
   syncCardUnlocks,
   toggleEquip,
+  applyPreset,
+  savePreset,
 } from './meta/cards';
 import {
   RESEARCH,
@@ -38,7 +40,7 @@ import {
   ultimateLevel,
   ultimateUpgradePrice,
 } from './meta/ultimates';
-import type { StatId, UpgradeCategory, UpgradeDef } from './core/types';
+import type { StatId, TargetPriority, UpgradeCategory, UpgradeDef } from './core/types';
 import { applySave, ensurePlayerId, localStorageStore, type SaveData } from './meta/save';
 import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
 import { render } from './ui/renderer';
@@ -198,10 +200,15 @@ function fmtStatDelta(stat: StatId, v: number): string {
   switch (stat) {
     case 'critChance':
     case 'freeUpgradeChance':
+    case 'armorPen':
+    case 'damageReduction':
+    case 'interestRate':
       return `+${(v * 100).toFixed(1)}%`;
     case 'critFactor':
     case 'cashPerKill':
     case 'coinBonus':
+    case 'elementalPower':
+    case 'eliteDamage':
       return `+${v.toFixed(2)}x`;
     case 'attackSpeed':
     case 'healthRegen':
@@ -216,10 +223,15 @@ function fmtStatValue(stat: StatId, v: number): string {
   switch (stat) {
     case 'critChance':
     case 'freeUpgradeChance':
+    case 'armorPen':
+    case 'damageReduction':
+    case 'interestRate':
       return `${(v * 100).toFixed(1)}%`;
     case 'critFactor':
     case 'cashPerKill':
     case 'coinBonus':
+    case 'elementalPower':
+    case 'eliteDamage':
       return `x${v.toFixed(2)}`;
     case 'attackSpeed':
       return v.toFixed(2);
@@ -241,6 +253,7 @@ function makeUpgradeButton(def: UpgradeDef, onClick: () => void): UpgradeButton 
   el.innerHTML =
     `<span class="name"></span>` +
     `<span class="value"><span class="current"></span><span class="preview"></span></span>` +
+    `<span class="milestone"></span>` +
     `<span class="foot"><span class="delta"></span><span class="cost"></span></span>`;
   el.dataset.upgrade = def.id;
   el.addEventListener('click', () => {
@@ -269,6 +282,8 @@ function refreshUpgradeButton(
   (el.querySelector('.current') as HTMLElement).textContent = fmtStatValue(def.stat, currentValue);
   (el.querySelector('.preview') as HTMLElement).textContent = maxed ? '' : `→ ${fmtStatValue(def.stat, nextValue)}`;
   (el.querySelector('.delta') as HTMLElement).textContent = maxed ? '已達上限' : `提升 ${fmtStatDelta(def.stat, nextValue - currentValue)}`;
+  const milestone = nextMilestone(def.id, level);
+  (el.querySelector('.milestone') as HTMLElement).textContent = milestone ? `◆ Lv.${milestone.level} ${milestone.name}` : '';
   const costEl = el.querySelector('.cost') as HTMLElement;
   costEl.className = `cost ${currencyClass}`;
   costEl.textContent = maxed ? 'MAX' : formatNumber(cost);
@@ -408,10 +423,16 @@ function refreshCardCell(cell: HTMLElement): void {
   cell.classList.toggle('equipped', equipped);
   cell.classList.toggle('locked', !owned);
   if (!owned) {
+    const requirements = [
+      def.unlockWave > 0 ? `W${def.unlockWave}` : '',
+      def.unlockTier ? `Tier ${def.unlockTier}` : '',
+      def.unlockRuns ? `${def.unlockRuns} 場` : '',
+      def.unlockKills ? `${formatNumber(def.unlockKills)} 擊殺` : '',
+    ].filter(Boolean).join(' · ');
     cell.innerHTML = `
       <div class="card-art locked-art">${icon('lock')}</div>
       <div class="card-name">${def.name}</div>
-      <div class="card-sub">波次 ${def.unlockWave} 解鎖</div>`;
+      <div class="card-sub">挑戰：${requirements || '立即解鎖'}</div>`;
     return;
   }
   const cost = starUpCost(star);
@@ -454,6 +475,54 @@ function refreshCardCell(cell: HTMLElement): void {
 }
 
 let slotsFlash = 0;
+type CardFilter = 'all' | 'attack' | 'defense' | 'economy' | 'element' | 'origin';
+let cardFilter: CardFilter = 'all';
+
+function cardGroup(def: CardDef): CardFilter {
+  if (def.cat === 'origin') return 'origin';
+  if (def.set === 'flame' || def.set === 'frost' || def.effect.stat === 'elementalPower') return 'element';
+  if (['maxHealth', 'healthRegen', 'armor', 'damageReduction', 'energyShield'].includes(def.effect.stat ?? '') || ['thorns', 'lifesteal'].includes(def.effect.kind)) return 'defense';
+  if (['cashPerKill', 'cashPerWave', 'coinBonus', 'interestRate'].includes(def.effect.stat ?? '') || ['interest', 'startCash'].includes(def.effect.kind)) return 'economy';
+  return 'attack';
+}
+
+function cardMatchesFilter(def: CardDef, filter: CardFilter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'origin') return def.cat === 'origin';
+  if (filter === 'element') return def.set === 'flame' || def.set === 'frost' || def.effect.stat === 'elementalPower';
+  return cardGroup(def) === filter;
+}
+
+function renderCardPresets(): void {
+  const root = $('#card-presets');
+  root.innerHTML = '';
+  for (let i = 0; i < 3; i++) {
+    const group = document.createElement('div');
+    group.className = 'preset-group';
+    const count = save.cardPresets[i]?.length ?? 0;
+    group.innerHTML = `<button data-load>配置 ${i + 1}${count ? ` · ${count}張` : ' · 空'}</button><button data-save>儲存</button>`;
+    (group.querySelector('[data-load]') as HTMLButtonElement).addEventListener('click', () => {
+      if (applyPreset(save, i)) { saveProgress(); refreshCards(); }
+    });
+    (group.querySelector('[data-save]') as HTMLButtonElement).addEventListener('click', () => {
+      savePreset(save, i); saveProgress(); refreshCards();
+    });
+    root.appendChild(group);
+  }
+}
+
+function renderCardFilters(): void {
+  const defs: Array<[CardFilter, string]> = [['all', '全部'], ['attack', '攻擊'], ['defense', '防禦'], ['economy', '經濟'], ['element', '元素'], ['origin', '開局']];
+  const root = $('#card-filters');
+  root.innerHTML = '';
+  for (const [id, label] of defs) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.classList.toggle('active', cardFilter === id);
+    b.addEventListener('click', () => { cardFilter = id; refreshCards(); });
+    root.appendChild(b);
+  }
+}
 function flashSlots(): void {
   slotsFlash = 1;
   refreshCards();
@@ -465,6 +534,8 @@ function flashSlots(): void {
 
 function refreshCards(): void {
   refreshWorkshop(); // 共用頂欄（金幣/最高波次/場數）
+  renderCardPresets();
+  renderCardFilters();
 
   // 裝備列：已用/總槽位 + 各槽內容 + 解鎖新槽位
   const slotWrap = $('#card-loadout');
@@ -519,7 +590,7 @@ function refreshCards(): void {
     const ob = cardStar(save, b.id) > 0 ? 0 : 1;
     return oa - ob || a.unlockWave - b.unlockWave;
   });
-  for (const def of ordered) {
+  for (const def of ordered.filter((d) => cardMatchesFilter(d, cardFilter))) {
     const cell = makeCardCell(def.id);
     inv.appendChild(cell);
     refreshCardCell(cell);
@@ -744,6 +815,9 @@ let hud: Hud | null = null;
 let dispCash = 0;
 let dispCoin = 0;
 let dispHp = 0;
+const TARGET_LABELS: Record<TargetPriority, string> = {
+  closest: '最近', farthest: '最遠', highHp: '最高血', lowHp: '最低血', elite: '精英', ranged: '遠程',
+};
 
 function buildBattleTopbar(): void {
   topbar.classList.add('battle-hud');
@@ -785,7 +859,7 @@ function updateBattleHud(dt: number): void {
   }
   hud.cash.textContent = `$ ${formatNumber(dispCash)}`;
   hud.coin.textContent = formatNumber(dispCoin);
-  hud.hp.textContent = `${formatNumber(Math.max(Math.ceil(dispHp), 0))}/${formatNumber(sim.stats.maxHealth)}`;
+  hud.hp.textContent = `${formatNumber(Math.max(Math.ceil(dispHp), 0))}/${formatNumber(sim.stats.maxHealth)}${sim.shieldHp > 0 ? ` +${formatNumber(sim.shieldHp)}` : ''}`;
   const ratio = sim.towerHp / sim.stats.maxHealth;
   hud.hp.style.color = ratio > 0.35 ? '' : '#f85149';
   const hpFill = topbar.querySelector('.hp-fill') as HTMLElement;
@@ -794,7 +868,31 @@ function updateBattleHud(dt: number): void {
   const status = topbar.querySelector('[data-status]') as HTMLElement;
   status.innerHTML = sim.perks.includes('incendiary') ? '<span style="color:#ff7a3d;background:#ff7a3d"></span>' : '';
   if (sim.perks.includes('cryoRounds')) status.innerHTML += '<span style="color:#72d8ff;background:#72d8ff"></span>';
+
+  const boss = sim.enemies.find((e) => e.typeId === 'boss');
+  const bossHud = $('#boss-hud');
+  bossHud.classList.toggle('active', Boolean(boss));
+  if (boss) {
+    const bossRatio = Math.max(0, boss.hp / boss.maxHp);
+    (bossHud.querySelector('.boss-fill') as HTMLElement).style.width = `${bossRatio * 100}%`;
+    const bossNames = { swarm: '蟲群母艦', bulwark: '壁壘巨像', leech: '噬命領主', chrono: '時序監督者' };
+    (bossHud.querySelector('[data-boss-name]') as HTMLElement).textContent = `${bossNames[boss.bossArchetype ?? 'swarm']} · 階段 ${boss.bossPhase}`;
+    const summonIn = Math.max(0, boss.summonTimer);
+    const skills = { swarm: `召喚 ${summonIn.toFixed(1)}s`, bulwark: `護盾 ${formatNumber(boss.affixShield)}`, leech: '攻擊吸血 8%', chrono: sim.bossSlowTimer > 0 ? '時間壓制中' : `時間脈衝 ${Math.max(0,boss.affixTimer).toFixed(1)}s` };
+    (bossHud.querySelector('[data-boss-skill]') as HTMLElement).textContent = skills[boss.bossArchetype ?? 'swarm'];
+    bossHud.classList.toggle('threatening', summonIn <= 1.5);
+  } else {
+    bossHud.classList.remove('threatening');
+  }
+  $('#target-btn').textContent = `索敵：${TARGET_LABELS[sim.targetPriority]}`;
 }
+
+$('#target-btn').addEventListener('click', () => {
+  if (!sim) return;
+  cycleTargetPriority(sim);
+  Sound.play('click');
+  $('#target-btn').textContent = `索敵：${TARGET_LABELS[sim.targetPriority]}`;
+});
 
 /** 只刷新升級按鈕（成本/買得起狀態），與頂欄滾動分開 */
 function refreshBattleButtons(): void {
@@ -1268,12 +1366,19 @@ function showResults(s: SimState): void {
   const tierLine = newTier
     ? `<div class="record">🔓 解鎖 Tier ${newTier}！（+🪙${formatNumber(TIER_CONFIG.firstClearCoins * newTier)}）</div>`
     : '';
+  const damageNames = { direct:'砲塔直擊', burn:'燃燒', chain:'連鎖閃電', splash:'爆炸', bounce:'彈射', thorns:'反傷', ultimate:'終極武器', satellite:'軌道衛星' };
+  const totalDamage = Object.values(s.damageBreakdown).reduce((a,b) => a+b, 0);
+  const damageRows = Object.entries(s.damageBreakdown).sort((a,b)=>b[1]-a[1]).slice(0,3).filter(([,v])=>v>0)
+    .map(([k,v]) => `<div class="row"><span class="label">${damageNames[k as keyof typeof damageNames]}</span><span class="value">${formatNumber(v)} · ${totalDamage ? Math.round(v/totalDamage*100) : 0}%</span></div>`).join('');
   $('#results-rows').innerHTML = `
     ${isRecord ? '<div class="record">🏆 新紀錄！</div>' : ''}
     ${unlockedLine}${ultLine}${tierLine}
     <div class="row"><span class="label">難度</span><span class="value">T${s.tier}</span></div>
     <div class="row"><span class="label">到達波次</span><span class="value">${s.wave}</span></div>
     <div class="row"><span class="label">擊殺數</span><span class="value">${formatNumber(s.kills)}</span></div>
+    <div class="row"><span class="label">承受傷害</span><span class="value">${formatNumber(s.damageTaken)}</span></div>
+    <div class="row"><span class="label">致命來源</span><span class="value">${s.lastDamageSource}</span></div>
+    ${damageRows}
     <div class="row"><span class="label">獲得金幣</span><span class="value coin" data-coinroll>+🪙 0</span></div>
     <div class="row"><span class="label">歷史最高</span><span class="value">${save.bestWave}</span></div>`;
   $('#results').classList.add('active');
@@ -1405,7 +1510,7 @@ function frame(now: number): void {
 
   if (sim && !sim.over) {
     accumulator += dt * speed;
-    while (accumulator >= TICK_DT) {
+    while (accumulator >= TICK_DT && !sim.pendingRoute) {
       step(sim, TICK_DT);
       // 取走本 tick 的視覺事件（下個 step 開頭會清空）
       vfx.ingest(sim.events);
@@ -1415,6 +1520,7 @@ function frame(now: number): void {
           Sound.play(e.boss ? 'boss' : 'wave');
         }
         if (e.type === 'perkOffer') showPerkChoice(e.wave, e.choices);
+        else if (e.type === 'routeOffer') $('#route-overlay').classList.add('active');
         else if (e.type === 'fire') Sound.play('fire');
         else if (e.type === 'hit') Sound.play(e.crit ? 'crit' : 'hit');
         else if (e.type === 'kill') Sound.play(e.typeId === 'coin' ? 'coin' : 'kill');
@@ -1451,6 +1557,11 @@ $('#start-btn').addEventListener('click', () => {
   startBattle();
 });
 $('#results-btn').addEventListener('click', showWorkshop);
+for (const button of document.querySelectorAll<HTMLButtonElement>('[data-route]')) button.addEventListener('click', () => {
+  if (sim && chooseRoute(sim, button.dataset.route as 'safe'|'danger')) {
+    $('#route-overlay').classList.remove('active'); accumulator = 0; Sound.play('click');
+  }
+});
 
 // 工坊 / 卡片 / 研究 分頁切換
 for (const b of document.querySelectorAll<HTMLButtonElement>('.meta-nav button')) {

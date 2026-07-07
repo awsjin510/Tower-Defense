@@ -13,7 +13,9 @@ export function cardStar(save: SaveData, id: string): number {
 export function syncCardUnlocks(save: SaveData): string[] {
   const unlocked: string[] = [];
   for (const def of CARDS) {
-    if (save.bestWave >= def.unlockWave && (save.cards[def.id] ?? 0) < 1) {
+    const challengeMet = save.bestWave >= def.unlockWave && save.tierMax >= (def.unlockTier ?? 1)
+      && save.totalRuns >= (def.unlockRuns ?? 0) && save.totalKills >= (def.unlockKills ?? 0);
+    if (challengeMet && (save.cards[def.id] ?? 0) < 1) {
       save.cards[def.id] = 1;
       unlocked.push(def.id);
     }
@@ -73,4 +75,19 @@ export function toggleEquip(save: SaveData, id: string): boolean {
 /** 移除超出目前槽數或已不再擁有的裝備（槽位/存檔異動後的防呆） */
 export function pruneEquipped(save: SaveData): void {
   save.equipped = save.equipped.filter((id) => cardStar(save, id) > 0).slice(0, save.cardSlots);
+}
+
+/** 把目前裝備儲存到 0-based 預設槽。 */
+export function savePreset(save: SaveData, index: number): boolean {
+  if (index < 0 || index >= 3) return false;
+  save.cardPresets[index] = [...save.equipped];
+  return true;
+}
+
+/** 套用預設；未擁有或超出目前槽位的卡片會安全略過。 */
+export function applyPreset(save: SaveData, index: number): boolean {
+  const preset = save.cardPresets[index];
+  if (!preset || preset.length === 0) return false;
+  save.equipped = preset.filter((id) => cardStar(save, id) > 0).slice(0, save.cardSlots);
+  return true;
 }

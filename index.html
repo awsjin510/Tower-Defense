@@ -130,6 +130,7 @@
       .upgrade-btn .foot { display: flex; justify-content: space-between; align-items: baseline; width: 100%; gap: 6px; margin-top: auto; }
       .upgrade-btn .delta { font-size: 10px; color: #8b949e; font-variant-numeric: tabular-nums; }
       .upgrade-btn .cost { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .upgrade-btn .milestone { min-height:12px; font-size:9px; color:#c58aff; letter-spacing:.2px; text-shadow:0 0 7px rgba(197,138,255,.32); }
 
       .screen { display: none; }
       .screen.active { display: block; }
@@ -180,6 +181,13 @@
       .slot-unlock:disabled { opacity: 0.45; cursor: default; }
 
       #card-inventory { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      #card-presets, #card-filters { display:flex; gap:6px; margin:8px 0; overflow-x:auto; }
+      .preset-group { flex:1; min-width:118px; display:flex; border:1px solid var(--brd); border-radius:9px; overflow:hidden; }
+      .preset-group button, #card-filters button { border:0; background:#161f2e; color:#9db0c8; padding:7px 9px; font-size:11px; font-weight:800; cursor:pointer; white-space:nowrap; }
+      .preset-group button:first-child { flex:1; color:#dce9f8; }
+      .preset-group button + button { border-left:1px solid var(--brd); color:#58c6ff; }
+      #card-filters button { border:1px solid var(--brd); border-radius:999px; }
+      #card-filters button.active { color:#fff; border-color:#58a6ff; background:#203554; box-shadow:0 0 10px rgba(88,166,255,.22); }
       .card-cell {
         background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 10px;
         display: flex; flex-direction: column; gap: 6px;
@@ -313,6 +321,15 @@
         margin-top: 16px; width: 100%; padding: 12px; background: #1f6feb; color: #fff;
         border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer;
       }
+      #route-overlay { position:fixed; inset:0; z-index:90; display:none; place-items:center; padding:20px; background:rgba(3,7,18,.78); backdrop-filter:blur(8px); }
+      #route-overlay.active { display:grid; }
+      .route-box { width:min(720px,94vw); padding:24px; border:1px solid #39496b; border-radius:18px; background:linear-gradient(145deg,#121a2b,#0a1020); box-shadow:0 24px 80px #000a; text-align:center; }
+      .route-options { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin-top:18px; }
+      .route-option { padding:20px 16px; border:1px solid #3b4d70; border-radius:14px; color:#eef4ff; background:#142038; cursor:pointer; }
+      .route-option.danger { border-color:#a94762; background:#2a1522; }
+      .route-option strong { display:block; margin-bottom:8px; font-size:18px; }
+      .route-option span { color:#aab8d0; line-height:1.45; }
+      @media(max-width:560px){ .route-options{grid-template-columns:1fr} }
 
       /* Perk 三選一：戰鬥暫停時的覆蓋層 */
       #perk-overlay {
@@ -554,6 +571,14 @@
       #topbar .status-pips span { width:12px; height:3px; border-radius:4px; box-shadow:0 0 7px currentColor; }
 
       #canvas-wrap { min-height: 280px; }
+      #boss-hud { position:absolute; top:12px; left:50%; transform:translateX(-50%); width:min(82%,430px); z-index:7; display:none; padding:8px 11px; border:1px solid rgba(255,90,160,.55); border-radius:10px; background:rgba(19,7,26,.82); box-shadow:0 0 20px rgba(212,60,200,.22); backdrop-filter:blur(6px); }
+      #boss-hud.active { display:block; }
+      #boss-hud.threatening { animation:bossWarn .55s ease-in-out infinite alternate; }
+      @keyframes bossWarn { from{border-color:rgba(255,90,160,.55)} to{border-color:#ffcf4a;box-shadow:0 0 28px rgba(255,90,80,.55)} }
+      #boss-hud .boss-head { display:flex; justify-content:space-between; gap:8px; font-size:11px; font-weight:900; color:#ffc8f4; }
+      #boss-hud .boss-track { height:7px; margin-top:5px; border-radius:6px; overflow:hidden; background:#240f27; }
+      #boss-hud .boss-fill { height:100%; width:100%; background:linear-gradient(90deg,#d43cc8,#ff6b9d); box-shadow:0 0 10px #d43cc8; transition:width .12s; }
+      #target-btn { position:absolute; right:10px; bottom:10px; z-index:7; padding:7px 10px; border-radius:9px; border:1px solid rgba(88,198,255,.5); color:#bcecff; background:rgba(8,18,30,.82); font-size:11px; font-weight:800; backdrop-filter:blur(6px); }
       #bottom { flex: 0 0 auto; }
       .upgrade-grid { max-height: 29vh; }
       .upgrade-btn .value { display:flex; align-items:baseline; gap:7px; }
@@ -647,8 +672,10 @@
         </div>
         <h1>卡片</h1>
         <div class="sub">戰前配置卡片，槽位有限——取捨出你的流派</div>
+        <div id="card-presets"></div>
         <div id="card-loadout-label"></div>
         <div id="card-loadout"></div>
+        <div id="card-filters"></div>
         <div id="card-inventory"></div>
       </div>
 
@@ -679,9 +706,11 @@
       <div id="battle-screen" class="screen">
         <div id="canvas-wrap">
           <canvas id="game"></canvas>
+          <div id="boss-hud"><div class="boss-head"><span data-boss-name>頭目</span><span data-boss-skill>召喚蓄力</span></div><div class="boss-track"><div class="boss-fill"></div></div></div>
           <div id="wave-banner"></div>
           <div id="free-banner">🪙 免費升級！</div>
           <div id="ult-bar"></div>
+          <button id="target-btn" type="button">索敵：最近</button>
         </div>
         <div id="bottom">
           <div id="tabs"></div>
@@ -705,6 +734,17 @@
           <div id="perk-actions">
             <button id="perk-reroll" class="perk-action">重骰</button>
             <button id="perk-skip" class="perk-action ghost">跳過領錢</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="route-overlay">
+        <div class="route-box">
+          <h2>🧭 選擇下一段航道</h2>
+          <div class="sub" id="route-sub">接下來 10 波將套用此路線</div>
+          <div class="route-options">
+            <button class="route-option" data-route="safe"><strong>🛡️ 穩定航道</strong><span>敵人 -10% HP／傷害<br>獎勵 -10%</span></button>
+            <button class="route-option danger" data-route="danger"><strong>🔥 危險裂隙</strong><span>敵人 +25% HP、+15% 傷害<br>獎勵 +50%</span></button>
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { ARENA_RADIUS, TOWER_RADIUS, type SimState } from '../core/sim';
+import { ARENA_RADIUS, TOWER_RADIUS, selectTarget, type SimState } from '../core/sim';
 import { ENEMY_TYPES } from '../core/waves';
 import { zoneForWave } from '../core/zones';
 import type { Enemy } from '../core/types';
@@ -425,6 +425,15 @@ export function render(
       ctx.arc(e.x, e.y, e.radius + 7 + Math.sin(s.time * 4) * 2, 0, Math.PI * 2);
       ctx.stroke();
     }
+    if (e.affixShield > 0) {
+      ctx.strokeStyle = '#66e4ff'; ctx.lineWidth = 3; ctx.globalAlpha = .75;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.radius + 6, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    if (e.eliteAffix) {
+      const marks = { shielded:'◆', regenerating:'✚', enraged:'!', stealth:'◌', volatile:'✹', healer:'♥', reflective:'↩', blinking:'⌁' };
+      ctx.fillStyle = '#fff4b8'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(marks[e.eliteAffix], e.x, e.y - e.radius - 10);
+    }
     // 狀態辨識環：燃燒橘、冰霜藍、凍結實線、虛空強化紫。
     if (e.burnTime > 0 || e.frostStacks > 0 || e.frozenTime > 0 || e.zoneEmpower > 1) {
       const statusColor = e.frozenTime > 0 ? '#b9efff' : e.burnTime > 0 ? '#ff7a3d' : e.zoneEmpower > 1 ? '#c58aff' : '#72d8ff';
@@ -471,14 +480,8 @@ export function render(
 
   // 塔：砲管指向最近目標 + 呼吸光暈 + 血環
   let aim = -Math.PI / 2;
-  let bestSq = Infinity;
-  for (const e of s.enemies) {
-    const d = e.x * e.x + e.y * e.y;
-    if (d < bestSq) {
-      bestSq = d;
-      aim = Math.atan2(e.y, e.x);
-    }
-  }
+  const aimed = selectTarget(s, s.enemies.filter((e) => e.x * e.x + e.y * e.y <= s.stats.range * s.stats.range));
+  if (aimed) aim = Math.atan2(aimed.y, aimed.x);
   // 開火閃光
   for (const m of vfx.muzzles) {
     ctx.globalAlpha = m.life / 0.06;

@@ -5,10 +5,19 @@
     { "id": "critChance", "name": "暴擊率", "category": "attack", "stat": "critChance", "baseCost": 30, "costGrowth": 1.32, "valuePerLevel": 0.01, "maxLevel": 50 },
     { "id": "critFactor", "name": "暴擊倍率", "category": "attack", "stat": "critFactor", "baseCost": 45, "costGrowth": 1.32, "valuePerLevel": 0.08, "maxLevel": 60 },
     { "id": "range", "name": "射程", "category": "attack", "stat": "range", "baseCost": 35, "costGrowth": 1.35, "valuePerLevel": 8, "maxLevel": 20 },
+    { "id": "projectileSpeed", "name": "彈速", "category": "attack", "stat": "projectileSpeed", "baseCost": 110, "costGrowth": 1.28, "valuePerLevel": 22, "maxLevel": 30 },
+    { "id": "armorPen", "name": "護甲穿透", "category": "attack", "stat": "armorPen", "baseCost": 150, "costGrowth": 1.34, "valuePerLevel": 0.025, "maxLevel": 24 },
+    { "id": "eliteDamage", "name": "精英傷害", "category": "attack", "stat": "eliteDamage", "baseCost": 170, "costGrowth": 1.36, "valuePerLevel": 0.08, "maxLevel": 25 },
     { "id": "maxHealth", "name": "血量上限", "category": "defense", "stat": "maxHealth", "baseCost": 15, "costGrowth": 1.24, "valuePerLevel": 30, "maxLevel": 0 },
     { "id": "healthRegen", "name": "血量回復", "category": "defense", "stat": "healthRegen", "baseCost": 25, "costGrowth": 1.28, "valuePerLevel": 1.2, "maxLevel": 0 },
+    { "id": "armor", "name": "固定護甲", "category": "defense", "stat": "armor", "baseCost": 95, "costGrowth": 1.31, "valuePerLevel": 1.2, "maxLevel": 40 },
+    { "id": "damageReduction", "name": "傷害減免", "category": "defense", "stat": "damageReduction", "baseCost": 145, "costGrowth": 1.38, "valuePerLevel": 0.018, "maxLevel": 25 },
+    { "id": "energyShield", "name": "能量護盾", "category": "defense", "stat": "energyShield", "baseCost": 115, "costGrowth": 1.33, "valuePerLevel": 18, "maxLevel": 35 },
     { "id": "cashPerKill", "name": "每殺金額", "category": "economy", "stat": "cashPerKill", "baseCost": 30, "costGrowth": 1.35, "valuePerLevel": 0.08, "maxLevel": 40 },
     { "id": "cashPerWave", "name": "每波金額", "category": "economy", "stat": "cashPerWave", "baseCost": 25, "costGrowth": 1.3, "valuePerLevel": 12, "maxLevel": 0 }
+    ,{ "id": "interestRate", "name": "現金利息", "category": "economy", "stat": "interestRate", "baseCost": 130, "costGrowth": 1.4, "valuePerLevel": 0.01, "maxLevel": 20 }
+    ,{ "id": "coinBonus", "name": "本場金幣", "category": "economy", "stat": "coinBonus", "baseCost": 150, "costGrowth": 1.43, "valuePerLevel": 0.04, "maxLevel": 25 }
+    ,{ "id": "elementalPower", "name": "元素增幅", "category": "attack", "stat": "elementalPower", "baseCost": 165, "costGrowth": 1.39, "valuePerLevel": 0.06, "maxLevel": 25 }
   ],
   "workshop": [
     { "id": "ws_damage", "name": "傷害", "category": "attack", "stat": "damage", "baseCost": 10, "costGrowth": 1.22, "valuePerLevel": 3, "maxLevel": 0 },

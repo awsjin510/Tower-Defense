@@ -1,6 +1,6 @@
 import type { Levels } from '../core/stats';
 
-export const SAVE_VERSION = 9;
+export const SAVE_VERSION = 10;
 const SAVE_KEY = 'tower-defense-save';
 
 /** 每日任務進度 */
@@ -54,6 +54,8 @@ export interface SaveData {
   dailyDate: string;
   /** 當日任務進度（v9 起） */
   dailyMissions: DailyMission[];
+  /** 三套卡片 Build 預設（v10 起） */
+  cardPresets: string[][];
 }
 
 export function defaultSave(): SaveData {
@@ -79,6 +81,7 @@ export function defaultSave(): SaveData {
     tierBestWave: {},
     dailyDate: '',
     dailyMissions: [],
+    cardPresets: [[], [], []],
   };
 }
 
@@ -110,6 +113,8 @@ export function migrate(raw: unknown): SaveData {
   // v6 → v7：ultimates 由 defaultSave 補 {}（無終極武器）。
   // v7 → v8：tier / tierMax / tierBestWave 由 defaultSave 補預設（T1）。
   // v8 → v9：dailyDate / dailyMissions 由 defaultSave 補空，首次開啟時產生當日任務。
+  // v9 → v10：cardPresets 由 defaultSave 補三套空預設。
+  data.cardPresets = Array.from({ length: 3 }, (_, i) => [...(data.cardPresets?.[i] ?? [])]);
   data.version = SAVE_VERSION;
   return data;
 }
@@ -130,6 +135,7 @@ export function applySave(target: SaveData, source: SaveData): void {
     ultimates: { ...(source.ultimates ?? {}) },
     tierBestWave: { ...(source.tierBestWave ?? {}) },
     dailyMissions: (source.dailyMissions ?? []).map((m) => ({ ...m })),
+    cardPresets: Array.from({ length: 3 }, (_, i) => [...(source.cardPresets?.[i] ?? [])]),
   });
 }
 

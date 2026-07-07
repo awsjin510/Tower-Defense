@@ -1,4 +1,4 @@
-import type { Bullet, Enemy, SimEvent, Stats } from './types';
+import type { BossArchetype, Bullet, DamageSource, EliteAffix, Enemy, RouteId, SimEvent, Stats, TargetPriority } from './types';
 import { computeStats, IN_RUN_UPGRADES, type Levels } from './stats';
 import { upgradeCost, isMaxed } from './economy';
 import { applyPerks, hasPerk, isPerkWave, PERK_CONFIG, perkStacks, rerollCost, rollPerkChoices } from './perks';
@@ -24,8 +24,15 @@ import { tierMods } from './tiers';
 export const TICK_DT = 1 / 30;
 export const ARENA_RADIUS = 330;
 export const TOWER_RADIUS = 22;
-const BULLET_SPEED = 460;
 const ENEMY_ATTACK_INTERVAL = 1.0;
+export const TARGET_PRIORITIES: TargetPriority[] = ['closest', 'farthest', 'highHp', 'lowHp', 'elite', 'ranged'];
+export const ROUTES: Record<RouteId, { name: string; desc: string; hp: number; dmg: number; reward: number }> = {
+  safe: { name: '穩定航道', desc: '敵人 -10% HP／傷害，獎勵 -10%', hp: 0.9, dmg: 0.9, reward: 0.9 },
+  danger: { name: '危險裂隙', desc: '敵人 +25% HP、+15% 傷害，獎勵 +50%', hp: 1.25, dmg: 1.15, reward: 1.5 },
+};
+export const ELITE_AFFIXES: EliteAffix[] = ['shielded', 'regenerating', 'enraged', 'stealth', 'volatile', 'healer', 'reflective', 'blinking'];
+export const BOSS_ARCHETYPES: BossArchetype[] = ['swarm', 'bulwark', 'leech', 'chrono'];
+export const bossArchetypeForWave = (wave: number): BossArchetype => BOSS_ARCHETYPES[Math.max(0, Math.floor(wave / 10) - 1) % BOSS_ARCHETYPES.length];
 
 export interface SimState {
   wave: number;
@@ -34,6 +41,7 @@ export interface SimState {
   coinsEarned: number;
   kills: number;
   towerHp: number;
+  shieldHp: number;
   stats: Stats;
   inRunLevels: Levels;
   workshopLevels: Levels;
@@ -47,6 +55,13 @@ export interface SimState {
   spawnTimer: number;
   interWaveTimer: number;
   attackTimer: number;
+  targetPriority: TargetPriority;
+  activeRoute: RouteId;
+  pendingRoute: boolean;
+  bossSlowTimer: number;
+  damageBreakdown: Record<DamageSource, number>;
+  damageTaken: number;
+  lastDamageSource: string;
   over: boolean;
   rng: () => number;
   nextEnemyId: number;
@@ -104,6 +119,7 @@ export function newRun(
     coinsEarned: 0,
     kills: 0,
     towerHp: stats.maxHealth,
+    shieldHp: stats.energyShield,
     stats,
     inRunLevels,
     workshopLevels,
@@ -116,6 +132,13 @@ export function newRun(
     spawnTimer: 0.5,
     interWaveTimer: 0,
     attackTimer: 0,
+    targetPriority: 'closest',
+    activeRoute: 'safe',
+    pendingRoute: false,
+    bossSlowTimer: 0,
+    damageBreakdown: { direct: 0, burn: 0, chain: 0, splash: 0, bounce: 0, thorns: 0, ultimate: 0, satellite: 0 },
+    damageTaken: 0,
+    lastDamageSource: '未知威脅',
     over: false,
     rng,
     nextEnemyId: 1,
@@ -186,11 +209,35 @@ function fireBullet(s: SimState, target: Enemy, ox = 0, oy = 0): void {
     x: ox,
     y: oy,
     targetId: target.id,
-    speed: BULLET_SPEED,
+    speed: s.stats.projectileSpeed,
     dmg: s.stats.damage * combatDamageMult(s) * (crit ? s.stats.critFactor : 1),
     crit,
     ...(pierce > 0 ? { pierce, hitIds: [], pierceRamp: hasPerk(s.perks, 'railgun') ? 0.15 : 0 } : {}),
   });
+}
+
+function damageEnemy(s: SimState, e: Enemy, raw: number, source: DamageSource, crit = false): number {
+  let dmg = Math.max(0, raw);
+  const absorbed = Math.min(e.affixShield ?? 0, dmg);
+  e.affixShield = (e.affixShield ?? 0) - absorbed;
+  dmg -= absorbed;
+  const dealt = Math.min(e.hp, dmg);
+  e.hp -= dmg;
+  s.damageBreakdown[source] += dealt;
+  if (raw > 0) s.events.push({ type: 'hit', id: e.id, x: e.x, y: e.y, dmg: dealt, crit });
+  return dealt;
+}
+
+function damageTower(s: SimState, raw: number, source: string): number {
+  const mitigated = Math.max(1, raw - s.stats.armor) * (1 - s.stats.damageReduction);
+  const absorbed = Math.min(s.shieldHp, mitigated);
+  s.shieldHp -= absorbed;
+  const dealt = mitigated - absorbed;
+  s.towerHp -= dealt;
+  s.damageTaken += dealt;
+  s.lastDamageSource = source;
+  s.events.push({ type: 'towerHit', dmg: dealt });
+  return dealt;
 }
 
 /**
@@ -210,8 +257,7 @@ export function activateUltimate(s: SimState, id: string): boolean {
     // 黑洞：對全場敵人造成塔傷的倍率傷害（瞬發、確定性）
     const dmg = s.stats.damage * ult.damageMult;
     for (const e of [...s.enemies]) {
-      e.hp -= dmg;
-      s.events.push({ type: 'hit', id: e.id, x: e.x, y: e.y, dmg, crit: true });
+      damageEnemy(s, e, dmg, 'ultimate', true);
       if (e.hp <= 0) killEnemy(s, e);
     }
     s.events.push({ type: 'ultNuke', color: ult.color });
@@ -224,7 +270,12 @@ function makeEnemy(s: SimState, typeId: string, x?: number, y?: number): Enemy {
   const def = ENEMY_TYPES.find((t) => t.id === typeId)!;
   const angle = s.rng() * Math.PI * 2;
   const tm = tierMods(s.tier); // 全域難度倍率
-  const hp = enemyHp(s.wave, def.hpMult) * tm.hp;
+  const route = ROUTES[s.activeRoute];
+  let hp = enemyHp(s.wave, def.hpMult) * tm.hp * route.hp;
+  const bossArchetype = typeId === 'boss' ? bossArchetypeForWave(s.wave) : undefined;
+  if (bossArchetype === 'bulwark') hp *= 1.25;
+  const eliteAffix = typeId !== 'boss' && !['normal', 'fast'].includes(typeId) && s.wave >= 12 && s.rng() < 0.38
+    ? ELITE_AFFIXES[Math.floor(s.rng() * ELITE_AFFIXES.length)] : undefined;
   return {
     id: s.nextEnemyId++,
     typeId,
@@ -233,14 +284,14 @@ function makeEnemy(s: SimState, typeId: string, x?: number, y?: number): Enemy {
     hp,
     maxHp: hp,
     speed: enemySpeed(s.wave, def.speedMult),
-    dmg: enemyDmg(s.wave, def.dmgMult) * tm.dmg,
-    cashValue: enemyCash(s.wave, def.rewardMult) * tm.reward,
-    coinValue: enemyCoin(s.wave, def.rewardMult) * tm.reward,
+    dmg: enemyDmg(s.wave, def.dmgMult) * tm.dmg * route.dmg,
+    cashValue: enemyCash(s.wave, def.rewardMult) * tm.reward * route.reward,
+    coinValue: enemyCoin(s.wave, def.rewardMult) * tm.reward * route.reward,
     radius: def.radius,
     attackTimer: 0,
     attackRange: def.attackRange ?? 0,
-    summonEvery: def.summonEvery ?? 0,
-    summonTimer: def.summonEvery ?? 0,
+    summonEvery: bossArchetype === 'swarm' ? 4 : (def.summonEvery ?? 0),
+    summonTimer: bossArchetype === 'swarm' ? 4 : (def.summonEvery ?? 0),
     burnDps: 0,
     burnTime: 0,
     burnStacks: 0,
@@ -249,6 +300,12 @@ function makeEnemy(s: SimState, typeId: string, x?: number, y?: number): Enemy {
     zoneTimer: zoneForWave(s.wave).mechanic.interval ?? 0,
     zoneEmpower: 1,
     canSplit: true,
+    eliteAffix,
+    affixTimer: 4,
+    affixShield: eliteAffix === 'shielded' ? hp * .3 : bossArchetype === 'bulwark' ? hp * .35 : 0,
+    affixTriggered: false,
+    bossArchetype,
+    bossPhase: 3,
   };
 }
 
@@ -280,6 +337,7 @@ function killEnemy(s: SimState, e: Enemy): void {
   s.events.push({ type: 'kill', x: e.x, y: e.y, typeId: e.typeId });
   const i = s.enemies.indexOf(e);
   if (i >= 0) s.enemies.splice(i, 1);
+  if (e.eliteAffix === 'volatile') damageTower(s, s.stats.maxHealth * .035, '爆裂菁英');
 
   // 燃燒流：死亡時把現有燃燒傳給附近三名敵人。
   if (hasPerk(s.perks, 'wildfire') && e.burnTime > 0) {
@@ -290,8 +348,7 @@ function killEnemy(s: SimState, e: Enemy): void {
   if (hasPerk(s.perks, 'shatter') && e.frozenTime > 0) {
     for (const n of nearestEnemies(s, e.x, e.y, 4, e.id).filter((n) => Math.hypot(n.x - e.x, n.y - e.y) <= 100)) {
       const dmg = s.stats.damage * 0.8;
-      n.hp -= dmg;
-      s.events.push({ type: 'hit', id: n.id, x: n.x, y: n.y, dmg, crit: false });
+      damageEnemy(s, n, dmg, 'splash');
       if (n.hp <= 0) killEnemy(s, n);
     }
   }
@@ -346,8 +403,7 @@ function chainLightning(s: SimState, sourceId: number, hx: number, hy: number): 
     s.events.push({ type: 'chain', x1: px, y1: py, x2: e.x, y2: e.y, crit: true });
     px = e.x;
     py = e.y;
-    e.hp -= d;
-    s.events.push({ type: 'hit', id: e.id, x: e.x, y: e.y, dmg: d, crit: false });
+    damageEnemy(s, e, d, 'chain');
     if (e.hp <= 0) killEnemy(s, e);
   }
 }
@@ -385,11 +441,15 @@ function applyFrost(s: SimState, e: Enemy): void {
 function startNextWave(s: SimState): void {
   s.cash += s.stats.cashPerWave;
   // 利息卡：按目前現金比例生息（上限避免滾雪球失控）
-  if (s.mods.interest > 0) {
-    s.cash += Math.min(s.cash * s.mods.interest, s.stats.cashPerWave * 10);
+  const interest = s.mods.interest + s.stats.interestRate;
+  if (interest > 0) {
+    const bossBoost = isBossWave(s.wave + 1) && (s.inRunLevels.interestRate ?? 0) >= 10 ? 2 : 1;
+    s.cash += Math.min(s.cash * interest * bossBoost, s.stats.cashPerWave * 12);
   }
   s.coinsEarned += waveCoinBonus(s.wave) * s.stats.coinBonus * coinMultiplier(s) * tierMods(s.tier).reward;
   s.wave++;
+  const shieldMilestone = (s.inRunLevels.maxHealth ?? 0) >= 20 ? s.stats.maxHealth * 0.1 : 0;
+  s.shieldHp = Math.max(s.shieldHp, s.stats.energyShield + shieldMilestone);
   if (isZoneEntryWaveCompat(s.wave)) {
     s.zoneMeter = 0;
     s.zonePulseTimer = zoneForWave(s.wave).mechanic.interval ?? 0;
@@ -398,6 +458,10 @@ function startNextWave(s: SimState): void {
   s.spawnIdx = 0;
   s.spawnTimer = 0;
   s.events.push({ type: 'wave', wave: s.wave, boss: isBossWave(s.wave) });
+  if (s.wave > 1 && (s.wave - 1) % 10 === 0) {
+    s.pendingRoute = true;
+    s.events.push({ type: 'routeOffer', wave: s.wave });
+  }
   if (isPerkWave(s.wave)) {
     const choices = rollPerkChoices(s.perks, s.rng, PERK_CONFIG.choices + s.mods.extraPerkChoices, s.wave);
     if (choices.length > 0) {
@@ -415,11 +479,13 @@ function isZoneEntryWaveCompat(wave: number): boolean {
 /** 屬性重算（升級/Perk 後呼叫）：血量上限提高時補差額，降低時夾回上限 */
 function recomputeStats(s: SimState): void {
   const prevMax = s.stats.maxHealth;
+  const prevShieldMax = s.stats.energyShield;
   const next = computeStats(s.workshopLevels, s.inRunLevels, s.researchLevels);
   applyPerks(next, s.perks);
   applyCardStatMods(next, s.mods.statMods);
   s.stats = next;
   if (next.maxHealth > prevMax) s.towerHp += next.maxHealth - prevMax;
+  if (next.energyShield > prevShieldMax) s.shieldHp += next.energyShield - prevShieldMax;
   s.towerHp = Math.min(s.towerHp, next.maxHealth);
 }
 
@@ -439,7 +505,9 @@ export function step(s: SimState, dt: number): void {
     if (s.ultActive[i].remaining <= 0) s.ultActive.splice(i, 1);
   }
 
-  s.towerHp = Math.min(s.towerHp + s.stats.healthRegen * dt, s.stats.maxHealth);
+  const regen = s.stats.healthRegen * dt;
+  if (s.towerHp < s.stats.maxHealth) s.towerHp = Math.min(s.towerHp + regen, s.stats.maxHealth);
+  else if ((s.inRunLevels.healthRegen ?? 0) >= 20) s.shieldHp = Math.min(s.shieldHp + regen * 0.5, s.stats.energyShield + s.stats.maxHealth * 0.15);
 
   // 觸發式 Perk 的計時效果
   if (hasPerk(s.perks, 'momentum') && s.killStreakTimer > 0) {
@@ -471,8 +539,7 @@ export function step(s: SimState, dt: number): void {
     if (s.zonePulseTimer <= 0) {
       s.zonePulseTimer += zone.mechanic.interval ?? 8;
       const towerDmg = s.stats.maxHealth * zone.mechanic.value;
-      s.towerHp -= towerDmg;
-      s.events.push({ type: 'towerHit', dmg: towerDmg });
+      damageTower(s, towerDmg, '熔岩脈衝');
       s.events.push({ type: 'zonePulse', zoneId: zone.id, color: zone.accent });
       for (const e of [...s.enemies]) applyBurn(s, e, s.stats.damage * 0.16, 1);
     }
@@ -482,12 +549,40 @@ export function step(s: SimState, dt: number): void {
   for (const e of [...s.enemies]) {
     if (e.burnTime > 0) {
       const burn = e.burnDps * dt;
-      e.hp -= burn;
+      damageEnemy(s, e, burn, 'burn');
       e.burnTime -= dt;
       if (e.burnTime <= 0) { e.burnDps = 0; e.burnStacks = 0; }
       if (e.hp <= 0) killEnemy(s, e);
     }
     if (e.frozenTime > 0) e.frozenTime = Math.max(0, e.frozenTime - dt);
+  }
+
+  if (s.bossSlowTimer > 0) s.bossSlowTimer = Math.max(0, s.bossSlowTimer - dt);
+  for (const e of s.enemies) {
+    if (e.eliteAffix === 'regenerating') e.hp = Math.min(e.maxHp, e.hp + e.maxHp * .008 * dt);
+    if (e.eliteAffix === 'enraged' && !e.affixTriggered && e.hp < e.maxHp * .4) {
+      e.affixTriggered = true; e.speed *= 1.35; e.dmg *= 1.35;
+      s.events.push({ type: 'status', id: e.id, x: e.x, y: e.y, status: 'empower' });
+    }
+    if (e.eliteAffix === 'healer') for (const n of s.enemies) {
+      if (n !== e && (n.x - e.x) ** 2 + (n.y - e.y) ** 2 < 120 ** 2) n.hp = Math.min(n.maxHp, n.hp + n.maxHp * .006 * dt);
+    }
+    if (e.eliteAffix === 'blinking') {
+      e.affixTimer -= dt;
+      if (e.affixTimer <= 0) { e.affixTimer += 4; const d = Math.hypot(e.x, e.y) || 1; e.x -= e.x / d * 28; e.y -= e.y / d * 28; }
+    }
+    if (e.bossArchetype) {
+      const phase = e.hp / e.maxHp > .7 ? 3 : e.hp / e.maxHp > .35 ? 2 : 1;
+      if (phase < e.bossPhase) {
+        e.bossPhase = phase; e.speed *= 1.12; e.dmg *= 1.12;
+        if (e.bossArchetype === 'bulwark') e.affixShield += e.maxHp * .15;
+        s.events.push({ type: 'status', id: e.id, x: e.x, y: e.y, status: 'empower' });
+      }
+      if (e.bossArchetype === 'chrono') {
+        e.affixTimer -= dt;
+        if (e.affixTimer <= 0) { e.affixTimer += 5; s.bossSlowTimer = 2.5; }
+      }
+    }
   }
 
   // 波次與生成
@@ -529,7 +624,8 @@ export function step(s: SimState, dt: number): void {
     const standoff = Math.max(contact, e.attackRange);
     if (dist > standoff) {
       // 慢速靈氣卡：射程內的敵人減速
-      const slow = s.mods.slowAura > 0 && dist <= s.stats.range ? 1 - s.mods.slowAura : 1;
+      const milestoneSlow = (s.inRunLevels.range ?? 0) >= 10 ? 0.08 : 0;
+      const slow = dist <= s.stats.range ? 1 - Math.min(s.mods.slowAura + milestoneSlow, 0.7) : 1;
       const frostSlow = e.frostStacks > 0 ? Math.max(0.55, 1 - e.frostStacks * 0.12) : 1;
       const frozen = e.frozenTime > 0 ? 0 : 1;
       const move = Math.min(e.speed * slow * frostSlow * frozen * dt, dist - standoff);
@@ -539,8 +635,7 @@ export function step(s: SimState, dt: number): void {
     } else {
       e.attackTimer -= dt;
       if (e.attackTimer <= 0) {
-        s.towerHp -= e.dmg;
-        s.events.push({ type: 'towerHit', dmg: e.dmg });
+        damageTower(s, e.dmg, e.bossArchetype ? `${e.bossArchetype} Boss` : (e.eliteAffix ? `${e.eliteAffix} 菁英` : e.typeId));
         if (e.attackRange > 0) s.events.push({ type: 'enemyShot', x: e.x, y: e.y });
         // 吸血菁英：攻擊塔時回復自身血量
         const eDef = ENEMY_TYPES.find((t) => t.id === e.typeId);
@@ -548,10 +643,10 @@ export function step(s: SimState, dt: number): void {
           e.hp = Math.min(e.maxHp, e.hp + eDef.lifesteal * e.maxHp);
           s.events.push({ type: 'status', id: e.id, x: e.x, y: e.y, status: 'empower' });
         }
+        if (e.bossArchetype === 'leech') e.hp = Math.min(e.maxHp, e.hp + e.maxHp * .08);
         // 荊棘反傷卡：近戰攻擊者受到一部分傷害反彈
         if (s.mods.thorns > 0 && e.attackRange === 0) {
-          e.hp -= e.dmg * s.mods.thorns;
-          s.events.push({ type: 'hit', id: e.id, x: e.x, y: e.y, dmg: e.dmg * s.mods.thorns, crit: false });
+          damageEnemy(s, e, e.dmg * s.mods.thorns, 'thorns');
           if (e.hp <= 0) killEnemy(s, e);
         }
         e.attackTimer += ENEMY_ATTACK_INTERVAL;
@@ -587,24 +682,17 @@ export function step(s: SimState, dt: number): void {
   s.enemies.push(...summoned);
 
   // 塔索敵開火（用距離平方比較，冷卻可在單 tick 內多次觸發以支援高攻速）
-  const cooldown = 1 / (s.stats.attackSpeed * momentumMult(s) * (1 - s.zoneMeter));
+  const cooldown = 1 / (s.stats.attackSpeed * momentumMult(s) * (1 - s.zoneMeter) * (s.bossSlowTimer > 0 ? .6 : 1));
   s.attackTimer -= dt;
   while (s.attackTimer <= 0) {
-    const rangeSq = s.stats.range * s.stats.range;
-    let target: Enemy | null = null;
-    let bestSq = Infinity;
-    for (const e of s.enemies) {
-      const dSq = e.x * e.x + e.y * e.y;
-      if (dSq <= rangeSq && dSq < bestSq) {
-        bestSq = dSq;
-        target = e;
-      }
-    }
+    const target = selectTarget(s, s.enemies.filter((e) => e.x * e.x + e.y * e.y <= s.stats.range * s.stats.range && (e.eliteAffix !== 'stealth' || Math.hypot(e.x, e.y) <= s.stats.range * .62)));
     if (!target) {
       s.attackTimer = 0;
       break;
     }
     fireBullet(s, target);
+    // 攻速里程碑：每第 5 發免費追加一發。
+    if ((s.inRunLevels.attackSpeed ?? 0) >= 20 && s.shotCount % 5 === 0) fireBullet(s, target);
     // 多重射擊：同時攻擊其餘最近的敵人
     const extra = multishotExtra(s);
     if (extra > 0) {
@@ -631,7 +719,7 @@ export function step(s: SimState, dt: number): void {
       }
       if (tgt) {
         s.satTimer += SAT_FIRE_CD;
-        s.bullets.push({ x: sx, y: sy, targetId: tgt.id, speed: BULLET_SPEED, dmg: s.stats.damage * 0.7, crit: false });
+        s.bullets.push({ x: sx, y: sy, targetId: tgt.id, speed: s.stats.projectileSpeed, dmg: s.stats.damage * 0.7, crit: false, source: 'satellite' });
         s.events.push({ type: 'fire', angle: Math.atan2(tgt.y - sy, tgt.x - sx) });
       } else {
         s.satTimer = 0;
@@ -654,13 +742,18 @@ export function step(s: SimState, dt: number): void {
     if (dist <= travel + target.radius) {
       // 命中傷害套用條件卡與觸發式 Perk：破甲、巨獸殺手、頭目剋星、脆化、戰區傷害
       let dmg = b.dmg;
+      const armored = target.typeId === 'tank' || target.typeId === 'protector' || target.typeId === 'boss';
+      if (armored) dmg *= 1 + s.stats.armorPen * 0.6;
+      const elite = !['normal', 'fast'].includes(target.typeId);
+      if (elite) dmg *= s.stats.eliteDamage;
       if (hasPerk(s.perks, 'armorBreak') && target.hp >= target.maxHp) dmg *= 1.45;
       if (hasPerk(s.perks, 'giantSlayer') && (target.typeId === 'boss' || target.summonEvery > 0)) dmg *= 1.5;
       if (target.frozenTime > 0 && hasPerk(s.perks, 'brittle')) dmg *= 1.5;
       if (target.typeId === 'boss' && s.mods.bossDamageMult > 1) dmg *= s.mods.bossDamageMult;
       const zoneBonus = s.mods.zoneDamage[zoneForWave(s.wave).id] ?? 0;
       if (zoneBonus > 0) dmg *= 1 + zoneBonus;
-      target.hp -= dmg;
+      damageEnemy(s, target, dmg, b.source ?? 'direct', b.crit);
+      if (target.eliteAffix === 'reflective') damageTower(s, Math.min(dmg * .08, s.stats.maxHealth * .025), '反射菁英');
       // 處決者：血量落入門檻直接了結（頭目門檻較低）
       if (target.hp > 0 && hasPerk(s.perks, 'execute')) {
         const thr = target.typeId === 'boss' ? 0.04 : 0.12;
@@ -668,11 +761,15 @@ export function step(s: SimState, dt: number): void {
       }
       if (hasPerk(s.perks, 'incendiary')) {
         const stacks = b.crit && hasPerk(s.perks, 'volatileFuel') ? 2 : 1;
-        const burnDps = dmg * 0.18 * (hasPerk(s.perks, 'volatileFuel') && b.crit ? s.stats.critFactor : 1);
+        const burnDps = dmg * 0.18 * s.stats.elementalPower * (hasPerk(s.perks, 'volatileFuel') && b.crit ? s.stats.critFactor : 1);
         applyBurn(s, target, burnDps, stacks);
       }
       if (hasPerk(s.perks, 'cryoRounds')) applyFrost(s, target);
-      s.events.push({ type: 'hit', id: target.id, x: target.x, y: target.y, dmg, crit: b.crit });
+      if (s.stats.knockback > 0 && target.typeId !== 'boss') {
+        const d = Math.hypot(target.x, target.y) || 1;
+        target.x += (target.x / d) * s.stats.knockback;
+        target.y += (target.y / d) * s.stats.knockback;
+      }
       const hx = target.x;
       const hy = target.y;
       // 連鎖閃電：暴擊時電弧跳附近敵人
@@ -700,6 +797,14 @@ export function step(s: SimState, dt: number): void {
         removed = true;
       }
       if (target.hp <= 0) killEnemy(s, target);
+      // 傷害里程碑：Lv.20 命中造成鄰近 35% 爆炸傷害。
+      if ((s.inRunLevels.damage ?? 0) >= 20) {
+        for (const n of nearestEnemies(s, hx, hy, 3, target.id).filter((n) => (n.x - hx) ** 2 + (n.y - hy) ** 2 <= 70 ** 2)) {
+          const splash = s.stats.damage * 0.35;
+          damageEnemy(s, n, splash, 'splash');
+          if (n.hp <= 0) killEnemy(s, n);
+        }
+      }
       // 彈射卡：子彈鏈跳到最近的其他敵人（穿透中只在最後一擊觸發，避免過度疊加）
       if (removed && s.mods.bounce > 0) {
         const bounceDmg = dmg * 0.6;
@@ -715,8 +820,7 @@ export function step(s: SimState, dt: number): void {
           s.events.push({ type: 'chain', x1: px, y1: py, x2: e.x, y2: e.y, crit: b.crit });
           px = e.x;
           py = e.y;
-          e.hp -= bounceDmg;
-          s.events.push({ type: 'hit', id: e.id, x: e.x, y: e.y, dmg: bounceDmg, crit: false });
+          damageEnemy(s, e, bounceDmg, 'bounce');
           if (e.hp <= 0) killEnemy(s, e);
         }
       }
@@ -737,6 +841,39 @@ export function step(s: SimState, dt: number): void {
     s.towerHp = 0;
     s.over = true;
   }
+}
+
+function isElite(e: Enemy): boolean {
+  return !['normal', 'fast'].includes(e.typeId);
+}
+
+export function selectTarget(s: Pick<SimState, 'targetPriority'>, candidates: Enemy[]): Enemy | null {
+  if (!candidates.length) return null;
+  const dist = (e: Enemy) => e.x * e.x + e.y * e.y;
+  const sorted = [...candidates].sort((a, b) => {
+    switch (s.targetPriority) {
+      case 'farthest': return dist(b) - dist(a) || a.id - b.id;
+      case 'highHp': return b.hp - a.hp || dist(a) - dist(b) || a.id - b.id;
+      case 'lowHp': return a.hp - b.hp || dist(a) - dist(b) || a.id - b.id;
+      case 'elite': return Number(isElite(b)) - Number(isElite(a)) || dist(a) - dist(b) || a.id - b.id;
+      case 'ranged': return Number(b.attackRange > 0) - Number(a.attackRange > 0) || dist(a) - dist(b) || a.id - b.id;
+      default: return dist(a) - dist(b) || a.id - b.id;
+    }
+  });
+  return sorted[0];
+}
+
+export function cycleTargetPriority(s: SimState): TargetPriority {
+  const i = TARGET_PRIORITIES.indexOf(s.targetPriority);
+  s.targetPriority = TARGET_PRIORITIES[(i + 1) % TARGET_PRIORITIES.length];
+  return s.targetPriority;
+}
+
+export function chooseRoute(s: SimState, route: RouteId): boolean {
+  if (!s.pendingRoute || !ROUTES[route]) return false;
+  s.activeRoute = route;
+  s.pendingRoute = false;
+  return true;
 }
 
 /** 場內升級購買；成功時回傳 true。買血量上限會同步補血。 */
