@@ -81,12 +81,16 @@ function finiteInteger(value: unknown, maximum: number): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= maximum;
 }
 
-function validSave(value: unknown): value is SavePayload {
+function finiteNumber(value: unknown, maximum: number): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= maximum;
+}
+
+export function validSave(value: unknown): value is SavePayload {
   if (!value || typeof value !== 'object') return false;
   const save = value as Partial<SavePayload>;
   if (
     !finiteInteger(save.version, 1000) ||
-    !finiteInteger(save.coins, 1_000_000_000_000_000) ||
+    !finiteNumber(save.coins, 1_000_000_000_000_000) ||
     !finiteInteger(save.bestWave, 1_000_000) ||
     !finiteInteger(save.totalRuns, 100_000_000) ||
     !finiteInteger(save.totalKills, 1_000_000_000_000) ||

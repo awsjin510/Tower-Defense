@@ -42,7 +42,7 @@ import {
   toggleUltimateEquip,
 } from './meta/ultimates';
 import type { StatId, TargetPriority, UpgradeCategory, UpgradeDef } from './core/types';
-import { applySave, ensurePlayerId, localStorageStore, type SaveData } from './meta/save';
+import { applySave, ensurePlayerId, localStorageStore, mergeSaveProgress, type SaveData } from './meta/save';
 import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
 import { render } from './ui/renderer';
 import { Vfx } from './ui/vfx';
@@ -98,6 +98,7 @@ const canvas = $('#game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 const authStatus = $('#auth-status');
 const authButton = $('#auth-btn') as HTMLButtonElement;
+const syncButton = $('#sync-btn') as HTMLButtonElement;
 
 const META_ICONS: Record<string, IconName> = { workshop: 'workshop', cards: 'cards', research: 'research', ultimates: 'ultimate' };
 function decorateStaticUi(): void {
@@ -122,6 +123,8 @@ function setAuthStatus(text: string, busy = false): void {
   authButton.disabled = busy;
 }
 
+function showSyncRetry(show: boolean): void { syncButton.hidden = !show; }
+
 function saveProgress(): void {
   save.lastSeenAt = Date.now();
   store.save(save);
@@ -129,9 +132,21 @@ function saveProgress(): void {
   const user = cloudUser;
   const snapshot = structuredClone(save);
   cloudWrite = cloudWrite
-    .then(async () => { cloudRevision = await cloudModule!.writeCloudSave(user, snapshot, cloudRevision); })
-    .then(() => setAuthStatus(`☁️ ${cloudUser?.email ?? '已同步'}`))
-    .catch(() => setAuthStatus('⚠️ 雲端同步失敗，本機進度已保存'));
+    .then(async () => {
+      try {
+        cloudRevision = await cloudModule!.writeCloudSave(user, snapshot, cloudRevision);
+      } catch (error) {
+        if (!(error instanceof cloudModule!.CloudApiError) || error.status !== 409) throw error;
+        const latest = await cloudModule!.loadCloudSave(user);
+        const merged = latest.save ? mergeSaveProgress(snapshot, latest.save) : snapshot;
+        cloudRevision = await cloudModule!.writeCloudSave(user, merged, latest.revision);
+        applySave(save, merged);
+        store.save(save);
+        if (!sim) refreshWorkshop();
+      }
+    })
+    .then(() => { setAuthStatus(`☁️ ${cloudUser?.email ?? '已同步'} · 已同步`); showSyncRetry(false); })
+    .catch((error) => { console.error('cloud_save_failed', error); setAuthStatus('⚠️ 雲端同步失敗，本機進度已保存'); showSyncRetry(true); });
 }
 
 async function reconcileCloud(user: User): Promise<void> {
@@ -139,21 +154,23 @@ async function reconcileCloud(user: User): Promise<void> {
   try {
     const result = await cloudModule!.loadCloudSave(user);
     cloudRevision = result.revision;
-    if (result.save && result.save.updatedAt > save.updatedAt) {
-      applySave(save, result.save);
-      store.save(save);
-    } else {
-      store.save(save);
-      cloudRevision = await cloudModule!.writeCloudSave(user, save, cloudRevision);
-    }
-    setAuthStatus(`☁️ ${user.email ?? 'Google 帳號'}`);
+    const merged = result.save ? mergeSaveProgress(save, result.save) : structuredClone(save);
+    applySave(save, merged);
+    store.save(save);
+    cloudRevision = await cloudModule!.writeCloudSave(user, save, cloudRevision);
+    setAuthStatus(`☁️ ${user.email ?? 'Google 帳號'} · 已同步`);
+    showSyncRetry(false);
     if (!sim) refreshWorkshop();
-  } catch {
+  } catch (error) {
+    console.error('cloud_reconcile_failed', error);
     setAuthStatus('⚠️ 雲端連線失敗，本機模式');
+    showSyncRetry(true);
   } finally {
     authButton.disabled = false;
   }
 }
+
+syncButton.addEventListener('click', () => { if (cloudUser) void reconcileCloud(cloudUser); });
 
 async function initCloud(): Promise<void> {
   if (!cloudConfigPresent) {
@@ -274,7 +291,7 @@ function refreshUpgradeButton(
   currency: number,
   currencyClass: string,
   currentValue: number,
-  nextValue = currentValue + def.valuePerLevel
+  nextValue: number
 ): void {
   const { def, el } = btn;
   const maxed = isMaxed(def, level);

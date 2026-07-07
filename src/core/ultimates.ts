@@ -87,7 +87,6 @@ export function resolveUltimate(def: UltimateDef, level: number, branch?: Ultima
 }
 
 export function describeUltimate(def: UltimateDef, level: number): string {
-  const cd = Math.round(ultimateCooldown(def, level));
   if (def.kind === 'coinBuff') return `${ultimateDuration(def, level)} 秒金幣 ×${ultimateValue(def, level).toFixed(1)}；連殺提高倍率`;
   if (def.kind === 'blackhole') return `吸怪 ${ultimateDuration(def, level)} 秒後造成 ${ultimateValue(def, level).toFixed(0)}× 塔傷`;
   if (def.kind === 'orbital') return `${ultimateDuration(def, level)} 秒鎖定菁英轟炸，單次 ${ultimateValue(def, level).toFixed(0)}× 塔傷`;

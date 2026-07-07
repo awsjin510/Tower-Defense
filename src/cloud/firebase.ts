@@ -114,9 +114,13 @@ export interface CloudSaveResult {
   revision: number;
 }
 
+export class CloudApiError extends Error {
+  constructor(public status: number, message: string) { super(message); }
+}
+
 export async function loadCloudSave(user: User): Promise<CloudSaveResult> {
   const response = await apiFetch(user, '/v1/save');
-  if (!response.ok) throw new Error(`Cloud save load failed: ${response.status}`);
+  if (!response.ok) throw new CloudApiError(response.status, `Cloud save load failed: ${response.status}`);
   const data = (await response.json()) as { save: unknown; revision: number };
   return { save: data.save ? migrate(data.save) : null, revision: data.revision };
 }
@@ -126,8 +130,7 @@ export async function writeCloudSave(user: User, save: SaveData, revision: numbe
     method: 'PUT',
     body: JSON.stringify({ save, revision }),
   });
-  if (response.status === 409) throw new Error('Cloud save conflict');
-  if (!response.ok) throw new Error(`Cloud save write failed: ${response.status}`);
+  if (!response.ok) throw new CloudApiError(response.status, response.status === 409 ? 'Cloud save conflict' : `Cloud save write failed: ${response.status}`);
   return ((await response.json()) as { revision: number }).revision;
 }
 

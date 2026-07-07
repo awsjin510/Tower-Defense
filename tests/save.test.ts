@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applySave, defaultSave, ensurePlayerId, migrate, newPlayerId, SAVE_VERSION } from '../src/meta/save';
+import { applySave, defaultSave, ensurePlayerId, mergeSaveProgress, migrate, newPlayerId, SAVE_VERSION } from '../src/meta/save';
+import { validSave } from '../worker/index';
 import { buyWorkshopUpgrade, settleRun } from '../src/meta/workshop';
 
 describe('save', () => {
@@ -60,5 +61,20 @@ describe('save', () => {
     expect(local.coins).toBe(88);
     expect(local.workshopLevels).toEqual({ ws_damage: 3 });
     expect(local.workshopLevels).not.toBe(originalLevels);
+  });
+
+  it('雲端 API 接受遊戲實際產生的小數金幣', () => {
+    const save = { ...defaultSave(), coins: 23.2, updatedAt: Date.now() };
+    expect(validSave(save)).toBe(true);
+  });
+
+  it('跨裝置合併保留較新的配置與兩邊較高的永久進度', () => {
+    const phone = { ...defaultSave(), updatedAt: 200, coins: 12.5, bestWave: 30, workshopLevels: { ws_damage: 2 }, cards: { crit: 2 } };
+    const desktop = { ...defaultSave(), updatedAt: 100, coins: 99, bestWave: 45, workshopLevels: { ws_damage: 5 }, cards: { coin: 3 } };
+    const merged = mergeSaveProgress(phone, desktop);
+    expect(merged.coins).toBe(12.5); // 可花費值以最近裝置為準，避免回復已花掉的貨幣
+    expect(merged.bestWave).toBe(45);
+    expect(merged.workshopLevels.ws_damage).toBe(5);
+    expect(merged.cards).toMatchObject({ crit: 2, coin: 3 });
   });
 });

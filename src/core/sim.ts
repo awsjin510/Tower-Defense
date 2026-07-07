@@ -1,7 +1,7 @@
 import type { BossArchetype, Bullet, DamageSource, EliteAffix, Enemy, RouteId, SimEvent, Stats, TargetPriority } from './types';
 import { computeStats, IN_RUN_UPGRADES, type Levels } from './stats';
 import { upgradeCost, isMaxed } from './economy';
-import { applyPerks, hasPerk, isPerkWave, PERK_CONFIG, perkStacks, rerollCost, rollPerkChoices } from './perks';
+import { applyPerks, hasPerk, isPerkWave, PERK_CONFIG, rerollCost, rollPerkChoices } from './perks';
 import { applyCardStatMods, emptyMods, type RunMods } from './cards';
 import type { ResolvedUltimate } from './ultimates';
 import { mulberry32 } from './rng';

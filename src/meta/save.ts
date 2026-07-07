@@ -156,6 +156,33 @@ export function applySave(target: SaveData, source: SaveData): void {
   });
 }
 
+/**
+ * 合併兩台裝置的存檔：最近更新的存檔保留貨幣、配置等可減少值；
+ * 永久進度使用逐欄最大值，避免舊裝置覆蓋較高波次、研究或卡片星級。
+ */
+export function mergeSaveProgress(a: SaveData, b: SaveData): SaveData {
+  const newer = a.updatedAt >= b.updatedAt ? a : b;
+  const merged = structuredClone(newer);
+  const maxRecord = (x: Record<string, number>, y: Record<string, number>) => {
+    const out = { ...x };
+    for (const [key, value] of Object.entries(y)) out[key] = Math.max(out[key] ?? 0, value);
+    return out;
+  };
+  merged.bestWave = Math.max(a.bestWave, b.bestWave);
+  merged.totalRuns = Math.max(a.totalRuns, b.totalRuns);
+  merged.totalKills = Math.max(a.totalKills, b.totalKills);
+  merged.coinRate = Math.max(a.coinRate, b.coinRate);
+  merged.cardSlots = Math.max(a.cardSlots, b.cardSlots);
+  merged.tierMax = Math.max(a.tierMax, b.tierMax);
+  merged.workshopLevels = maxRecord(a.workshopLevels, b.workshopLevels);
+  merged.cards = maxRecord(a.cards, b.cards);
+  merged.researchLevels = maxRecord(a.researchLevels, b.researchLevels);
+  merged.ultimates = maxRecord(a.ultimates, b.ultimates);
+  merged.tierBestWave = maxRecord(a.tierBestWave, b.tierBestWave);
+  merged.updatedAt = Math.max(a.updatedAt, b.updatedAt);
+  return migrate(merged);
+}
+
 /** 瀏覽器 localStorage 實作；core 測試時可注入記憶體版 */
 export function localStorageStore(): SaveStore {
   return {
