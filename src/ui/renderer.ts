@@ -533,6 +533,21 @@ export function render(
     ctx.strokeStyle = 'rgba(130,225,255,.75)'; ctx.lineWidth = 2; ctx.beginPath();
     for (let i = 0; i < 6; i++) { const a = -s.time * .5 + i * Math.PI / 3; const x = Math.cos(a) * 39, y = Math.sin(a) * 39; i ? ctx.lineTo(x,y) : ctx.moveTo(x,y); } ctx.closePath(); ctx.stroke();
   }
+  // 軌道衛星：繞塔飛行的自動炮台（畫出軌道虛線 + 發光機體）
+  if (hasPerk(s.perks, 'satellite')) {
+    const orbit = TOWER_RADIUS + 46;
+    const sx = Math.cos(s.satAngle) * orbit;
+    const sy = Math.sin(s.satAngle) * orbit;
+    ctx.strokeStyle = 'rgba(80,230,210,.18)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(0, 0, orbit, 0, Math.PI * 2); ctx.stroke();
+    ctx.save();
+    ctx.shadowColor = '#4be6d2'; ctx.shadowBlur = 12;
+    ctx.fillStyle = '#8ffff0';
+    ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(139,255,240,.5)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(sx, sy, 8 + Math.sin(s.time * 6) * 1.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
   const defenseLv = (s.inRunLevels.maxHealth ?? 0) + (s.workshopLevels.ws_maxHealth ?? 0);
   if (defenseLv >= 3) {
     ctx.strokeStyle = `rgba(88,198,255,${Math.min(.18 + defenseLv * .008, .48)})`; ctx.lineWidth = 2;

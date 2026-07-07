@@ -10,7 +10,8 @@ export type StatId =
   | 'healthRegen'
   | 'cashPerKill'
   | 'cashPerWave'
-  | 'coinBonus';
+  | 'coinBonus'
+  | 'freeUpgradeChance';
 
 export interface UpgradeDef {
   id: string;
@@ -118,6 +119,12 @@ export interface Bullet {
   speed: number;
   dmg: number;
   crit: boolean;
+  /** 穿透彈：剩餘可再貫穿的敵人數（未填 = 不貫穿） */
+  pierce?: number;
+  /** 已命中過的敵人 id，避免同一發重複打同一隻 */
+  hitIds?: number[];
+  /** 軌道砲：每次貫穿累積的傷害加成倍率（未填 = 無衰減也無加成） */
+  pierceRamp?: number;
 }
 
 /**

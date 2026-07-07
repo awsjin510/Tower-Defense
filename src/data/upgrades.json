@@ -18,6 +18,7 @@
     { "id": "ws_range", "name": "射程", "category": "attack", "stat": "range", "baseCost": 50, "costGrowth": 1.4, "valuePerLevel": 6, "maxLevel": 15 },
     { "id": "ws_maxHealth", "name": "血量上限", "category": "defense", "stat": "maxHealth", "baseCost": 12, "costGrowth": 1.22, "valuePerLevel": 25, "maxLevel": 0 },
     { "id": "ws_healthRegen", "name": "血量回復", "category": "defense", "stat": "healthRegen", "baseCost": 30, "costGrowth": 1.28, "valuePerLevel": 0.8, "maxLevel": 0 },
-    { "id": "ws_coinBonus", "name": "金幣加成", "category": "economy", "stat": "coinBonus", "baseCost": 50, "costGrowth": 1.35, "valuePerLevel": 0.05, "maxLevel": 40 }
+    { "id": "ws_coinBonus", "name": "金幣加成", "category": "economy", "stat": "coinBonus", "baseCost": 50, "costGrowth": 1.35, "valuePerLevel": 0.05, "maxLevel": 40 },
+    { "id": "ws_freeUpgrade", "name": "免費升級機率", "category": "economy", "stat": "freeUpgradeChance", "baseCost": 120, "costGrowth": 1.42, "valuePerLevel": 0.012, "maxLevel": 25 }
   ]
 }
