@@ -1,11 +1,11 @@
-import { ARENA_RADIUS, TOWER_RADIUS, type SimState } from '../core/sim';
+import { ARENA_RADIUS, TOWER_RADIUS, WORLD_SIZE, type SimState } from '../core/sim';
 import { ENEMY_TYPES } from '../core/waves';
 import { zoneForWave } from '../core/zones';
 import type { Enemy } from '../core/types';
 import type { Vfx } from './vfx';
 import { hasPerk } from '../core/perks';
 
-const WORLD = ARENA_RADIUS * 2 + 60;
+const WORLD = WORLD_SIZE;
 const enemyColor = new Map(ENEMY_TYPES.map((t) => [t.id, t.color]));
 
 // 星空背景：兩層視差，只生成一次

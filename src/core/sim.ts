@@ -23,6 +23,7 @@ import { tierMods } from './tiers';
 
 export const TICK_DT = 1 / 30;
 export const ARENA_RADIUS = 330;
+export const WORLD_SIZE = ARENA_RADIUS * 2 + 60;
 export const TOWER_RADIUS = 22;
 const ENEMY_ATTACK_INTERVAL = 1.0;
 export const TARGET_PRIORITIES: TargetPriority[] = ['closest', 'farthest', 'highHp', 'lowHp', 'elite', 'ranged'];
@@ -54,6 +55,10 @@ export interface SimState {
   spawnList: string[];
   spawnIdx: number;
   spawnTimer: number;
+  /** 目前可見戰場的世界座標半寬／半高；敵人從矩形螢幕邊界進場。 */
+  spawnHalfWidth: number;
+  spawnHalfHeight: number;
+  spawnRectangular: boolean;
   interWaveTimer: number;
   attackTimer: number;
   targetPriority: TargetPriority;
@@ -139,6 +144,9 @@ export function newRun(
     spawnList: waveComposition(1, rng),
     spawnIdx: 0,
     spawnTimer: 0.5,
+    spawnHalfWidth: ARENA_RADIUS,
+    spawnHalfHeight: ARENA_RADIUS,
+    spawnRectangular: false,
     interWaveTimer: 0,
     attackTimer: 0,
     targetPriority: 'closest',
@@ -292,10 +300,40 @@ export function activateUltimate(s: SimState, id: string, x = 0, y = 0): boolean
   return true;
 }
 
-/** 建立敵人；不給座標時放在場邊隨機角度（Boss 召喚會指定在 Boss 腳下） */
+/** 依 Canvas 長寬更新可見世界邊界；只影響新敵人的出生位置。 */
+export function setSpawnViewport(s: SimState, width: number, height: number): void {
+  if (width <= 0 || height <= 0) return;
+  const scale = Math.min(width, height) / WORLD_SIZE;
+  s.spawnHalfWidth = Math.max(ARENA_RADIUS, width / (2 * scale));
+  s.spawnHalfHeight = Math.max(ARENA_RADIUS, height / (2 * scale));
+  s.spawnRectangular = true;
+}
+
+/** 在整個矩形畫面邊界均勻取一個出生點，而非固定圓周。 */
+function randomScreenEdge(s: SimState, inset: number, roll: number): { x: number; y: number } {
+  const halfW = Math.max(inset, s.spawnHalfWidth - inset);
+  const halfH = Math.max(inset, s.spawnHalfHeight - inset);
+  const width = halfW * 2;
+  const height = halfH * 2;
+  let p = roll * (width + height) * 2;
+  if (p < width) return { x: -halfW + p, y: -halfH };
+  p -= width;
+  if (p < height) return { x: halfW, y: -halfH + p };
+  p -= height;
+  if (p < width) return { x: halfW - p, y: halfH };
+  return { x: -halfW, y: halfH - (p - width) };
+}
+
+/** 建立敵人；不給座標時從螢幕矩形邊界進場（Boss 召喚會指定在 Boss 腳下）。 */
 function makeEnemy(s: SimState, typeId: string, x?: number, y?: number): Enemy {
   const def = ENEMY_TYPES.find((t) => t.id === typeId)!;
-  const angle = s.rng() * Math.PI * 2;
+  // 即使是 Boss 召喚（已有座標）也維持消耗一次 RNG，避免改變既有戰鬥隨機序列。
+  const positionRoll = s.rng();
+  const spawn = x === undefined || y === undefined
+    ? s.spawnRectangular
+      ? randomScreenEdge(s, def.radius * 0.5, positionRoll)
+      : { x: Math.cos(positionRoll * Math.PI * 2) * ARENA_RADIUS, y: Math.sin(positionRoll * Math.PI * 2) * ARENA_RADIUS }
+    : null;
   const tm = tierMods(s.tier); // 全域難度倍率
   const route = ROUTES[s.activeRoute];
   let hp = enemyHp(s.wave, def.hpMult) * tm.hp * route.hp;
@@ -306,8 +344,8 @@ function makeEnemy(s: SimState, typeId: string, x?: number, y?: number): Enemy {
   return {
     id: s.nextEnemyId++,
     typeId,
-    x: x ?? Math.cos(angle) * ARENA_RADIUS,
-    y: y ?? Math.sin(angle) * ARENA_RADIUS,
+    x: x ?? spawn!.x,
+    y: y ?? spawn!.y,
     hp,
     maxHp: hp,
     speed: enemySpeed(s.wave, def.speedMult),

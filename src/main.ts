@@ -1,4 +1,4 @@
-import { activateUltimate, buyInRunUpgrade, choosePerk, chooseRoute, currentRerollCost, cycleTargetPriority, newRun, rerollPerks, skipPerks, step, TICK_DT, type SimState } from './core/sim';
+import { activateUltimate, buyInRunUpgrade, choosePerk, chooseRoute, currentRerollCost, cycleTargetPriority, newRun, rerollPerks, setSpawnViewport, skipPerks, step, TICK_DT, type SimState } from './core/sim';
 import { IN_RUN_UPGRADES, WORKSHOP_UPGRADES, computeStats, nextMilestone } from './core/stats';
 import { formatNumber, isMaxed, upgradeCost } from './core/economy';
 import { applyPerks, perkById, perkRarity, perkSchool, perkStacks } from './core/perks';
@@ -1598,6 +1598,7 @@ function frame(now: number): void {
   lastTime = now;
 
   if (sim && !sim.over) {
+    setSpawnViewport(sim, canvas.clientWidth, canvas.clientHeight);
     accumulator += dt * speed;
     while (accumulator >= TICK_DT && !sim.pendingRoute) {
       step(sim, TICK_DT);
