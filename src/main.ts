@@ -4,7 +4,7 @@ import { formatNumber, isMaxed, upgradeCost } from './core/economy';
 import { applyPerks, perkById, perkRarity, perkSchool, perkStacks } from './core/perks';
 import { offlineCoins } from './core/offline';
 import { isZoneEntryWave, zoneForWave } from './core/zones';
-import { CARDS, CARD_CONFIG, applyCardStatMods, buildRunMods, cardById, describeCard, type CardDef } from './core/cards';
+import { CARDS, CARD_CONFIG, CARD_SETS, activeSets, applyCardStatMods, buildRunMods, cardById, describeBonus, describeCard, type CardDef } from './core/cards';
 import {
   buyStarUp,
   buySlot,
@@ -388,10 +388,14 @@ function starDots(star: number, max: number): string {
 function cardIcon(def: CardDef): IconName {
   if (def.effect.kind === 'slowAura') return 'frost';
   if (def.effect.kind === 'thorns' || def.effect.kind === 'lifesteal' || def.effect.stat === 'maxHealth') return 'defense';
-  if (def.effect.kind === 'interest' || def.effect.stat === 'coinBonus') return 'economy';
+  if (def.effect.kind === 'interest' || def.effect.kind === 'startCash' || def.effect.stat === 'coinBonus') return 'economy';
   if (def.effect.kind === 'zoneDamage') return 'zone';
-  if (def.effect.kind === 'extraPerk') return 'perk';
+  if (def.effect.kind === 'extraPerk' || def.effect.kind === 'startPerk') return 'perk';
   return 'attack';
+}
+
+function setName(setId: string | undefined): string | null {
+  return setId ? CARD_SETS.find((s) => s.id === setId)?.name ?? null : null;
 }
 
 function refreshCardCell(cell: HTMLElement): void {
@@ -413,13 +417,18 @@ function refreshCardCell(cell: HTMLElement): void {
   const cost = starUpCost(star);
   const canStar = cost !== null;
   cell.style.setProperty('--card-color', def.color);
+  const bonusText = describeBonus(def);
+  const bonusActive = def.bonus ? star >= def.bonus.atStar : false;
+  const setLabel = setName(def.set);
   cell.innerHTML = `
     <div class="card-art" style="background:linear-gradient(160deg, ${def.color}44, ${def.color}11)">
       <span class="card-icon" style="color:${def.color}">${icon(cardIcon(def))}</span>
       <span class="card-stars">${starDots(star, CARD_CONFIG.starMax)}</span>
+      ${setLabel ? `<span class="card-set">${setLabel}套</span>` : ''}
     </div>
     <div class="card-name">${def.name}</div>
     <div class="card-sub">${describeCard(def, star)}</div>
+    ${bonusText ? `<div class="card-bonus ${bonusActive ? 'on' : ''}">◆ ${bonusText}</div>` : ''}
     <div class="card-actions">
       <button class="card-equip">${equipped ? '卸下' : '裝備'}</button>
       <button class="card-star" ${canStar && save.coins >= (cost as number) ? '' : 'disabled'}>${
@@ -460,8 +469,12 @@ function refreshCards(): void {
   // 裝備列：已用/總槽位 + 各槽內容 + 解鎖新槽位
   const slotWrap = $('#card-loadout');
   const cost = slotUnlockCost(save);
+  const sets = activeSets(save.equipped, (id) => cardStar(save, id));
+  const setText = sets.length
+    ? ' · ' + sets.map((s) => `<span class="set-active">${s.set.name}套 ${s.count} 件：${s.tiers.join('、')}</span>`).join(' ')
+    : '';
   $('#card-loadout-label').innerHTML =
-    `裝備 <b class="${slotsFlash ? 'flash' : ''}">${save.equipped.length}/${save.cardSlots}</b> · 槽位有限，取捨你的流派`;
+    `裝備 <b class="${slotsFlash ? 'flash' : ''}">${save.equipped.length}/${save.cardSlots}</b> · 槽位有限，取捨你的流派${setText}`;
   slotWrap.innerHTML = '';
   for (let i = 0; i < save.cardSlots; i++) {
     const id = save.equipped[i];

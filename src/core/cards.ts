@@ -1,8 +1,9 @@
 import type { StatId, Stats } from './types';
 import { ZONES } from './zones';
+import { perkById } from './perks';
 import cardsData from '../data/cards.json';
 
-export type CardCategory = 'stat' | 'rule' | 'cond';
+export type CardCategory = 'stat' | 'rule' | 'cond' | 'origin';
 export type CardKind =
   | 'stat'
   | 'bounce'
@@ -12,7 +13,9 @@ export type CardKind =
   | 'interest'
   | 'bossDamage'
   | 'extraPerk'
-  | 'zoneDamage';
+  | 'zoneDamage'
+  | 'startPerk'
+  | 'startCash';
 
 export interface CardEffect {
   kind: CardKind;
@@ -21,8 +24,22 @@ export interface CardEffect {
   mode?: 'mult' | 'add';
   /** kind='zoneDamage' 專用 */
   zoneId?: string;
+  /** kind='startPerk' 專用：開局自帶的 Perk id */
+  perks?: string[];
   /** 每顆星的效果增量 */
   perStar: number;
+}
+
+/** 複合卡的附加效果：達到 atStar 星時生效（純數值卡 3★ 附帶小規則） */
+export interface CardBonus {
+  atStar: number;
+  kind: CardKind;
+  value?: number;
+  stat?: StatId;
+  mode?: 'mult' | 'add';
+  perks?: string[];
+  /** UI 顯示文字 */
+  desc: string;
 }
 
 export interface CardDef {
@@ -34,6 +51,10 @@ export interface CardDef {
   /** 歷史最高波次達到此值時自動解鎖（0 = 開場即有） */
   unlockWave: number;
   effect: CardEffect;
+  /** 複合附加效果（達星生效） */
+  bonus?: CardBonus;
+  /** 套裝標籤：湊齊同套裝多張可觸發套裝加成 */
+  set?: string;
 }
 
 export interface CardConfig {
@@ -71,6 +92,10 @@ export interface RunMods {
   extraPerkChoices: number;
   /** 特定戰區的額外傷害倍率加成：zoneId → 加成（0.25 = +25%） */
   zoneDamage: Record<string, number>;
+  /** 開局自帶的 Perk（開局定義卡） */
+  startPerks: string[];
+  /** 開局起始現金（開局定義卡） */
+  startCash: number;
 }
 
 export function emptyMods(): RunMods {
@@ -84,12 +109,99 @@ export function emptyMods(): RunMods {
     bossDamageMult: 1,
     extraPerkChoices: 0,
     zoneDamage: {},
+    startPerks: [],
+    startCash: 0,
   };
 }
+
+/** 套裝定義：湊齊同套裝的張數越多，加成越強（各層累加） */
+export interface CardSet {
+  id: string;
+  name: string;
+  members: string[];
+  tiers: Array<{ n: number; desc: string; apply: (m: RunMods) => void }>;
+}
+
+export const CARD_SETS: CardSet[] = [
+  {
+    id: 'econ',
+    name: '財閥',
+    members: ['coin', 'interest', 'warchest'],
+    tiers: [
+      { n: 2, desc: '每波生息 +2%', apply: (m) => { m.interest += 0.02; } },
+      { n: 3, desc: '金幣 +12%', apply: (m) => { m.statMods.push({ stat: 'coinBonus', mult: 1.12 }); } },
+    ],
+  },
+  {
+    id: 'slayer',
+    name: '殺戮',
+    members: ['crit', 'bossbane', 'lifesteal'],
+    tiers: [
+      { n: 2, desc: '傷害 +8%', apply: (m) => { m.statMods.push({ stat: 'damage', mult: 1.08 }); } },
+      { n: 3, desc: '傷害再 +8%', apply: (m) => { m.statMods.push({ stat: 'damage', mult: 1.08 }); } },
+    ],
+  },
+];
 
 /** 卡片在某星級的效果數值 */
 export function cardValue(def: CardDef, star: number): number {
   return def.effect.perStar * star;
+}
+
+/** 把單一效果（主效果或附加效果）疊進 RunMods */
+function applyEffect(
+  mods: RunMods,
+  e: { kind: CardKind; stat?: StatId; mode?: 'mult' | 'add'; zoneId?: string; perks?: string[] },
+  value: number
+): void {
+  switch (e.kind) {
+    case 'stat':
+      if (e.stat) mods.statMods.push(e.mode === 'add' ? { stat: e.stat, add: value } : { stat: e.stat, mult: 1 + value });
+      break;
+    case 'bounce':
+      mods.bounce += Math.round(value);
+      break;
+    case 'slowAura':
+      mods.slowAura = Math.min(mods.slowAura + value, 0.6);
+      break;
+    case 'thorns':
+      mods.thorns += value;
+      break;
+    case 'lifesteal':
+      mods.lifestealFrac += value;
+      break;
+    case 'interest':
+      mods.interest += value;
+      break;
+    case 'bossDamage':
+      mods.bossDamageMult += value;
+      break;
+    case 'extraPerk':
+      mods.extraPerkChoices += Math.round(value);
+      break;
+    case 'zoneDamage':
+      if (e.zoneId) mods.zoneDamage[e.zoneId] = (mods.zoneDamage[e.zoneId] ?? 0) + value;
+      break;
+    case 'startPerk':
+      if (e.perks) for (const p of e.perks) if (!mods.startPerks.includes(p)) mods.startPerks.push(p);
+      break;
+    case 'startCash':
+      mods.startCash += value;
+      break;
+  }
+}
+
+/** 目前裝備觸發的套裝與各層加成（供 UI 顯示） */
+export function activeSets(equipped: string[], starOf: (id: string) => number): Array<{ set: CardSet; count: number; tiers: string[] }> {
+  const owned = equipped.filter((id) => starOf(id) > 0);
+  const out: Array<{ set: CardSet; count: number; tiers: string[] }> = [];
+  for (const set of CARD_SETS) {
+    const count = set.members.filter((id) => owned.includes(id)).length;
+    if (count < 2) continue;
+    const tiers = set.tiers.filter((t) => count >= t.n).map((t) => t.desc);
+    out.push({ set, count, tiers });
+  }
+  return out;
 }
 
 /** 由「已裝備卡片 + 各卡星級」組出本場加成。starOf 回傳 0 代表未裝備/未擁有。 */
@@ -99,38 +211,15 @@ export function buildRunMods(equipped: string[], starOf: (id: string) => number)
     const def = cardById(id);
     const star = starOf(id);
     if (!def || star <= 0) continue;
-    const v = cardValue(def, star);
-    const e = def.effect;
-    switch (e.kind) {
-      case 'stat':
-        if (!e.stat) break;
-        mods.statMods.push(e.mode === 'add' ? { stat: e.stat, add: v } : { stat: e.stat, mult: 1 + v });
-        break;
-      case 'bounce':
-        mods.bounce += Math.round(v);
-        break;
-      case 'slowAura':
-        mods.slowAura = Math.min(mods.slowAura + v, 0.6);
-        break;
-      case 'thorns':
-        mods.thorns += v;
-        break;
-      case 'lifesteal':
-        mods.lifestealFrac += v;
-        break;
-      case 'interest':
-        mods.interest += v;
-        break;
-      case 'bossDamage':
-        mods.bossDamageMult += v;
-        break;
-      case 'extraPerk':
-        mods.extraPerkChoices += Math.round(v);
-        break;
-      case 'zoneDamage':
-        if (e.zoneId) mods.zoneDamage[e.zoneId] = (mods.zoneDamage[e.zoneId] ?? 0) + v;
-        break;
+    applyEffect(mods, def.effect, cardValue(def, star));
+    // 複合附加效果：達星生效（純數值卡 3★ 的小規則、開局卡的代價）
+    if (def.bonus && star >= def.bonus.atStar) {
+      applyEffect(mods, def.bonus, def.bonus.value ?? 0);
     }
+  }
+  // 套裝加成：湊齊同套裝多張時觸發
+  for (const { set, count } of activeSets(equipped, starOf)) {
+    for (const t of set.tiers) if (count >= t.n) t.apply(mods);
   }
   return mods;
 }
@@ -144,6 +233,10 @@ export function applyCardStatMods(stats: Stats, statMods: RunMods['statMods']): 
   stats.critChance = Math.min(stats.critChance, 0.8);
 }
 
+function perkNames(ids: string[] = []): string {
+  return ids.map((id) => perkById(id)?.name ?? id).join('、');
+}
+
 /** 卡片在某星級的效果文字（0 星時顯示 1 星預覽） */
 export function describeCard(def: CardDef, star: number): string {
   const s = Math.max(star, 1);
@@ -151,7 +244,7 @@ export function describeCard(def: CardDef, star: number): string {
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   switch (def.effect.kind) {
     case 'stat':
-      return def.effect.mode === 'add' ? `${def.name} +${pct(v)}` : `${def.name} +${pct(v)}`;
+      return `${def.name} +${pct(v)}`;
     case 'bounce':
       return `子彈彈射 +${Math.round(v)} 目標`;
     case 'slowAura':
@@ -170,5 +263,15 @@ export function describeCard(def: CardDef, star: number): string {
       const zone = ZONES.find((z) => z.id === def.effect.zoneId);
       return `${zone?.name ?? '特定戰區'}傷害 +${pct(v)}`;
     }
+    case 'startPerk':
+      return `開局自帶：${perkNames(def.effect.perks)}`;
+    case 'startCash':
+      return `開局 +${Math.round(v)} 現金`;
   }
+}
+
+/** 複合附加效果的顯示文字（無則回傳 null） */
+export function describeBonus(def: CardDef): string | null {
+  if (!def.bonus) return null;
+  return `${def.bonus.atStar}★：${def.bonus.desc}`;
 }

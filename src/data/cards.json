@@ -7,17 +7,22 @@
     "slotCost": { "3": 800, "4": 2400, "5": 6500, "6": 16000 }
   },
   "cards": [
-    { "id": "as",         "name": "攻擊速度",   "cat": "stat", "icon": "⚡", "color": "#e05580", "unlockWave": 0,  "effect": { "kind": "stat", "stat": "attackSpeed", "mode": "mult", "perStar": 0.08 } },
-    { "id": "hp",         "name": "生命",       "cat": "stat", "icon": "❤️", "color": "#e3b341", "unlockWave": 0,  "effect": { "kind": "stat", "stat": "maxHealth",   "mode": "mult", "perStar": 0.12 } },
-    { "id": "coin",       "name": "金幣",       "cat": "stat", "icon": "🪙", "color": "#e3b341", "unlockWave": 0,  "effect": { "kind": "stat", "stat": "coinBonus",   "mode": "mult", "perStar": 0.12 } },
-    { "id": "range",      "name": "範圍",       "cat": "stat", "icon": "🎯", "color": "#58c6ff", "unlockWave": 4,  "effect": { "kind": "stat", "stat": "range",       "mode": "mult", "perStar": 0.10 } },
-    { "id": "crit",       "name": "爆擊率",     "cat": "stat", "icon": "💥", "color": "#e05580", "unlockWave": 7,  "effect": { "kind": "stat", "stat": "critChance",  "mode": "add",  "perStar": 0.03 } },
+    { "id": "as",         "name": "攻擊速度",   "cat": "stat", "icon": "⚡", "color": "#e05580", "unlockWave": 0,  "effect": { "kind": "stat", "stat": "attackSpeed", "mode": "mult", "perStar": 0.08 }, "bonus": { "atStar": 3, "kind": "bounce", "value": 1, "desc": "子彈彈射 +1 目標" } },
+    { "id": "hp",         "name": "生命",       "cat": "stat", "icon": "❤️", "color": "#e3b341", "unlockWave": 0,  "effect": { "kind": "stat", "stat": "maxHealth",   "mode": "mult", "perStar": 0.12 }, "bonus": { "atStar": 3, "kind": "thorns", "value": 0.15, "desc": "近戰反彈 15% 傷害" } },
+    { "id": "coin",       "name": "金幣",       "cat": "stat", "icon": "🪙", "color": "#e3b341", "unlockWave": 0,  "set": "econ", "effect": { "kind": "stat", "stat": "coinBonus",   "mode": "mult", "perStar": 0.12 }, "bonus": { "atStar": 3, "kind": "interest", "value": 0.02, "desc": "每波生息 +2% 現金" } },
+    { "id": "range",      "name": "範圍",       "cat": "stat", "icon": "🎯", "color": "#58c6ff", "unlockWave": 4,  "effect": { "kind": "stat", "stat": "range",       "mode": "mult", "perStar": 0.10 }, "bonus": { "atStar": 3, "kind": "slowAura", "value": 0.10, "desc": "射程內敵人減速 10%" } },
+    { "id": "crit",       "name": "爆擊率",     "cat": "stat", "icon": "💥", "color": "#e05580", "unlockWave": 7,  "set": "slayer", "effect": { "kind": "stat", "stat": "critChance",  "mode": "add",  "perStar": 0.03 }, "bonus": { "atStar": 3, "kind": "lifesteal", "value": 0.015, "desc": "擊殺回復 1.5% 血量上限" } },
+
+    { "id": "warchest",   "name": "戰爭寶箱",   "cat": "origin", "icon": "🎁", "color": "#e3b341", "unlockWave": 8,  "set": "econ", "effect": { "kind": "startCash", "perStar": 120 }, "bonus": { "atStar": 1, "kind": "stat", "stat": "coinBonus", "mode": "mult", "value": -0.1, "desc": "代價：金幣 -10%" } },
+    { "id": "emberstart", "name": "火種手記",   "cat": "origin", "icon": "🔥", "color": "#ff7a3d", "unlockWave": 12, "effect": { "kind": "startPerk", "perks": ["incendiary"], "perStar": 0 }, "bonus": { "atStar": 3, "kind": "startPerk", "perks": ["wildfire"], "desc": "額外自帶「野火蔓延」" } },
+    { "id": "frostcore",  "name": "霜核協議",   "cat": "origin", "icon": "❄️", "color": "#72d8ff", "unlockWave": 16, "effect": { "kind": "startPerk", "perks": ["cryoRounds"], "perStar": 0 }, "bonus": { "atStar": 3, "kind": "startPerk", "perks": ["brittle"], "desc": "額外自帶「脆化裝甲」" } },
+
     { "id": "bounce",     "name": "彈射",       "cat": "rule", "icon": "🔀", "color": "#b878ff", "unlockWave": 11, "effect": { "kind": "bounce",    "perStar": 1 } },
-    { "id": "lifesteal",  "name": "擊殺回血",   "cat": "rule", "icon": "🩸", "color": "#56d364", "unlockWave": 14, "effect": { "kind": "lifesteal", "perStar": 0.02 } },
+    { "id": "lifesteal",  "name": "擊殺回血",   "cat": "rule", "icon": "🩸", "color": "#56d364", "unlockWave": 14, "set": "slayer", "effect": { "kind": "lifesteal", "perStar": 0.02 } },
     { "id": "slowaura",   "name": "慢速靈氣",   "cat": "rule", "icon": "🐌", "color": "#56d364", "unlockWave": 18, "effect": { "kind": "slowAura",  "perStar": 0.12 } },
-    { "id": "interest",   "name": "利息",       "cat": "rule", "icon": "🏦", "color": "#e3b341", "unlockWave": 22, "effect": { "kind": "interest",  "perStar": 0.03 } },
+    { "id": "interest",   "name": "利息",       "cat": "rule", "icon": "🏦", "color": "#e3b341", "unlockWave": 22, "set": "econ", "effect": { "kind": "interest",  "perStar": 0.03 } },
     { "id": "thorns",     "name": "荊棘反傷",   "cat": "rule", "icon": "🌵", "color": "#58c6ff", "unlockWave": 26, "effect": { "kind": "thorns",    "perStar": 0.2 } },
-    { "id": "bossbane",   "name": "頭目剋星",   "cat": "cond", "icon": "☠️", "color": "#ff6b3d", "unlockWave": 30, "effect": { "kind": "bossDamage", "perStar": 0.3 } },
+    { "id": "bossbane",   "name": "頭目剋星",   "cat": "cond", "icon": "☠️", "color": "#ff6b3d", "unlockWave": 30, "set": "slayer", "effect": { "kind": "bossDamage", "perStar": 0.3 } },
     { "id": "strategist", "name": "策士",       "cat": "cond", "icon": "🃏", "color": "#b878ff", "unlockWave": 35, "effect": { "kind": "extraPerk",  "perStar": 1 } },
     { "id": "voidreaver", "name": "虛空掠奪者", "cat": "cond", "icon": "🌀", "color": "#b878ff", "unlockWave": 40, "effect": { "kind": "zoneDamage", "zoneId": "void", "perStar": 0.25 } }
   ]
