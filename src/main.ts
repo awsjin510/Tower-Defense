@@ -49,7 +49,6 @@ import { Vfx } from './ui/vfx';
 import { icon, type IconName } from './ui/icons';
 import { Sound } from './ui/sound';
 import { TIER_CONFIG, tierMods } from './core/tiers';
-import { ENEMY_TYPES, isBossWave } from './core/waves';
 import { selectTier, settleTier, tierBest } from './meta/tiers';
 import { isMissionComplete, missionById } from './core/missions';
 import { applyRunToMissions, claimMission, claimableCount, ensureDaily } from './meta/missions';
@@ -936,11 +935,6 @@ function updateBattleHud(dt: number): void {
     bossHud.classList.remove('threatening');
   }
   $('#target-btn').textContent = `索敵：${TARGET_LABELS[sim.targetPriority]}`;
-  const labels: Record<string,string> = {normal:'步兵',fast:'迅捷',tank:'重甲',ranged:'遠程',protector:'護盾',splitter:'分裂',vampire:'吸血',boss:'Boss'};
-  const remaining = sim.spawnList.slice(sim.spawnIdx).reduce<Record<string,number>>((m,id)=>(m[id]=(m[id]??0)+1,m),{});
-  const affixes = [...new Set(sim.enemies.map((e)=>e.eliteAffix).filter(Boolean))];
-  const nextIntel=(save.researchLevels.r_forecast??0)>0?`<br>下一波：${ENEMY_TYPES.filter((t)=>t.id!=='boss'&&t.minWave<=sim!.wave+1).slice(-3).map((t)=>t.name).join('、')}${isBossWave(sim.wave+1)?'、Boss':''}`:'';
-  $('#wave-preview').innerHTML = `<b>${sim.activeRoute==='danger'?'🔥 危險裂隙':sim.activeRoute==='anomaly'?'🌀 異常星雲':'🛡️ 穩定航道'}</b><br>${Object.entries(remaining).map(([id,n])=>`${labels[id]??id}×${n}`).join(' · ') || '本波已全數出現'}${affixes.length?`<br>詞綴：${affixes.join('、')}`:''}${nextIntel}`;
   const immediateThreat = sim.enemies.some((e)=>Math.hypot(e.x,e.y)<95 || (e.eliteAffix==='volatile' && Math.hypot(e.x,e.y)<150));
   $('#threat-warning').classList.toggle('active', immediateThreat);
 }

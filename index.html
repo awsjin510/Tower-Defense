@@ -603,7 +603,6 @@
       #boss-hud .boss-head { display:flex; justify-content:space-between; gap:8px; font-size:11px; font-weight:900; color:#ffc8f4; }
       #boss-hud .boss-track { height:7px; margin-top:5px; border-radius:6px; overflow:hidden; background:#240f27; }
       #boss-hud .boss-fill { height:100%; width:100%; background:linear-gradient(90deg,#d43cc8,#ff6b9d); box-shadow:0 0 10px #d43cc8; transition:width .12s; }
-      #wave-preview { position:absolute; right:10px; top:12px; z-index:6; max-width:240px; padding:7px 10px; border:1px solid #33435e; border-radius:9px; background:#08101dcc; color:#aebed5; font-size:10px; text-align:right; backdrop-filter:blur(5px); }
       #threat-warning { position:absolute; inset:0; z-index:5; pointer-events:none; border:0 solid rgba(255,50,80,0); transition:.12s; }
       #threat-warning.active { border-width:9px; border-color:rgba(255,50,80,.42); box-shadow:inset 0 0 65px rgba(255,0,40,.28); animation:threatPulse .55s infinite alternate; }
       @keyframes threatPulse { to{border-color:rgba(255,90,100,.72)} }
@@ -742,7 +741,7 @@
         <div id="canvas-wrap">
           <canvas id="game"></canvas>
           <div id="boss-hud"><div class="boss-head"><span data-boss-name>頭目</span><span data-boss-skill>召喚蓄力</span></div><div class="boss-track"><div class="boss-fill"></div></div></div>
-          <div id="wave-preview"></div><div id="threat-warning"></div>
+          <div id="threat-warning"></div>
           <div id="wave-banner"></div>
           <div id="free-banner">🪙 免費升級！</div>
           <div id="ult-bar"></div>
