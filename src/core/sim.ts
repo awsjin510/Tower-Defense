@@ -92,12 +92,15 @@ export function newRun(
 ): SimState {
   const inRunLevels: Levels = {};
   const stats = computeStats(workshopLevels, inRunLevels, researchLevels);
+  // 開局定義卡：自帶 Perk（規則型，無屬性影響）與起始現金
+  const startPerks = [...mods.startPerks];
+  applyPerks(stats, startPerks);
   applyCardStatMods(stats, mods.statMods);
   const rng = mulberry32(seed);
   return {
     wave: 1,
     time: 0,
-    cash: 0,
+    cash: mods.startCash,
     coinsEarned: 0,
     kills: 0,
     towerHp: stats.maxHealth,
@@ -116,7 +119,7 @@ export function newRun(
     over: false,
     rng,
     nextEnemyId: 1,
-    perks: [],
+    perks: startPerks,
     pendingPerks: null,
     perkRerolls: 0,
     shotCount: 0,

@@ -3,12 +3,15 @@ import { newRun, step, TICK_DT, type SimState } from '../src/core/sim';
 import {
   CARDS,
   CARD_CONFIG,
+  activeSets,
   buildRunMods,
   cardById,
   cardValue,
+  describeBonus,
   describeCard,
   emptyMods,
 } from '../src/core/cards';
+import { hasPerk } from '../src/core/perks';
 import { defaultSave, migrate, SAVE_VERSION } from '../src/meta/save';
 import {
   buySlot,
@@ -34,16 +37,19 @@ function runFor(s: SimState, seconds: number): void {
 }
 
 describe('cards data', () => {
-  it('資料健全：id 不重複、圖示/顏色齊全、三類都有、效果數值為正', () => {
+  it('資料健全：id 不重複、圖示/顏色齊全、四類都有、效果數值為正', () => {
     expect(new Set(CARDS.map((c) => c.id)).size).toBe(CARDS.length);
     expect(CARDS.some((c) => c.cat === 'stat')).toBe(true);
     expect(CARDS.some((c) => c.cat === 'rule')).toBe(true);
     expect(CARDS.some((c) => c.cat === 'cond')).toBe(true);
+    expect(CARDS.some((c) => c.cat === 'origin')).toBe(true);
     for (const c of CARDS) {
       expect(c.icon.length).toBeGreaterThan(0);
       expect(c.color).toMatch(/^#[0-9a-f]{6}$/i);
-      expect(c.effect.perStar).toBeGreaterThan(0);
+      // startPerk 型（開局定義卡）不靠 perStar 縮放，其餘效果數值需為正
+      if (c.effect.kind !== 'startPerk') expect(c.effect.perStar).toBeGreaterThan(0);
       expect(describeCard(c, 1).length).toBeGreaterThan(0);
+      if (c.bonus) expect(describeBonus(c)!.length).toBeGreaterThan(0);
     }
   });
 
@@ -54,6 +60,43 @@ describe('cards data', () => {
     expect(mods.statMods.some((m) => m.stat === 'attackSpeed' && m.mult === 1 + as.effect.perStar * 2)).toBe(true);
     expect(mods.statMods.some((m) => m.stat === 'critChance' && m.add)).toBe(true);
     expect(mods.bounce).toBe(3);
+  });
+
+  it('複合卡：達 3★ 才觸發附加規則（攻速卡 3★ → 彈射 +1）', () => {
+    const low = buildRunMods(['as'], () => 2); // 2★ 尚未觸發
+    expect(low.bounce).toBe(0);
+    const high = buildRunMods(['as'], () => 3); // 3★ 觸發彈射
+    expect(high.bounce).toBe(1);
+    // 生命卡 3★ → 荊棘、金幣卡 3★ → 生息
+    expect(buildRunMods(['hp'], () => 3).thorns).toBeGreaterThan(0);
+    expect(buildRunMods(['coin'], () => 3).interest).toBeGreaterThan(0);
+  });
+
+  it('套裝加成：湊 2 件觸發第一層、3 件再疊第二層', () => {
+    const two = activeSets(['coin', 'interest'], () => 3);
+    expect(two.find((s) => s.set.id === 'econ')?.tiers.length).toBe(1);
+    const three = activeSets(['coin', 'interest', 'warchest'], () => 3);
+    expect(three.find((s) => s.set.id === 'econ')?.tiers.length).toBe(2);
+    // 殺戮套裝 2 件 → 傷害倍率 statMod
+    const slayer = buildRunMods(['crit', 'lifesteal'], () => 3);
+    expect(slayer.statMods.some((m) => m.stat === 'damage' && (m.mult ?? 1) > 1)).toBe(true);
+  });
+
+  it('開局定義卡：火種手記自帶燃燒彈頭、戰爭寶箱給起始現金並扣金幣', () => {
+    const ember = buildRunMods(['emberstart'], () => 1);
+    expect(ember.startPerks).toContain('incendiary');
+    // 3★ 額外自帶野火蔓延
+    expect(buildRunMods(['emberstart'], () => 3).startPerks).toContain('wildfire');
+    // 戰爭寶箱：起始現金 > 0、代價金幣 -10%
+    const chest = buildRunMods(['warchest'], () => 1);
+    expect(chest.startCash).toBeGreaterThan(0);
+    expect(chest.statMods.some((m) => m.stat === 'coinBonus' && (m.mult ?? 1) < 1)).toBe(true);
+  });
+
+  it('newRun 套用開局卡：起始現金入袋、開局 Perk 生效', () => {
+    const s = newRun({}, 7, buildRunMods(['emberstart', 'warchest'], () => 1));
+    expect(hasPerk(s.perks, 'incendiary')).toBe(true);
+    expect(s.cash).toBeGreaterThan(0);
   });
 });
 
