@@ -492,22 +492,10 @@ export function render(
     }
   }
 
-  // 塔：砲管指向最近目標 + 呼吸光暈 + 血環
+  // 塔：科技裝甲砲台，砲身會追蹤目標並在開火時產生後座。
   let aim = -Math.PI / 2;
   const aimed = selectTarget(s, s.enemies.filter((e) => e.x * e.x + e.y * e.y <= s.stats.range * s.stats.range));
   if (aimed) aim = Math.atan2(aimed.y, aimed.x);
-  // 開火閃光
-  for (const m of vfx.muzzles) {
-    ctx.globalAlpha = m.life / 0.06;
-    ctx.strokeStyle = '#ffe08a';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(Math.cos(m.angle) * (TOWER_RADIUS + 16), Math.sin(m.angle) * (TOWER_RADIUS + 16));
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-
   // 終極武器衝擊波（黑洞）：從中心擴散的環
   for (const sh of vfx.shocks) {
     const t = 1 - sh.life / sh.maxLife;
@@ -521,25 +509,111 @@ export function render(
   }
   ctx.globalAlpha = 1;
 
-  // 開火閃光：有槍口特效時塔身瞬間增亮（後座回饋）
+  // 有槍口特效時塔身增亮並向後退，讓每次射擊都有重量。
   const fireFlash = vfx.muzzles.reduce((m, mz) => Math.max(m, mz.life / 0.06), 0);
+  const recoil = fireFlash * 4.5;
+
+  // 六角懸浮底座：深色金屬板、分割裝甲與緩慢旋轉的能量刻度。
   ctx.save();
-  ctx.shadowColor = fireFlash > 0 ? 'rgba(159,203,255,0.95)' : 'rgba(88,166,255,0.7)';
-  ctx.shadowBlur = 14 + Math.sin(s.time * 2.5) * 5 + fireFlash * 12;
-  ctx.fillStyle = fireFlash > 0.4 ? '#3d86ff' : '#1f6feb';
+  ctx.shadowColor = fireFlash > 0 ? '#8fe9ff' : tint(zone.accent, 0.8);
+  ctx.shadowBlur = 13 + fireFlash * 13;
+  ctx.fillStyle = '#071426';
   ctx.beginPath();
-  ctx.arc(0, 0, TOWER_RADIUS, 0, Math.PI * 2);
+  for (let i = 0; i < 8; i++) {
+    const a = Math.PI / 8 + i * Math.PI / 4;
+    const r = i % 2 ? TOWER_RADIUS * 1.08 : TOWER_RADIUS * 1.23;
+    i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  ctx.closePath();
   ctx.fill();
-  ctx.restore();
-  // 砲管
-  ctx.strokeStyle = '#9ecbff';
-  ctx.lineWidth = 6 + Math.min((s.inRunLevels.damage ?? 0) * 0.12, 5);
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(Math.cos(aim) * TOWER_RADIUS * 1.4, Math.sin(aim) * TOWER_RADIUS * 1.4);
+  ctx.strokeStyle = '#4c8fc4';
+  ctx.lineWidth = 2;
   ctx.stroke();
-  ctx.lineCap = 'butt';
+  ctx.restore();
+
+  ctx.save();
+  ctx.rotate(-s.time * 0.35);
+  ctx.strokeStyle = tint(zone.accent, 0.5);
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.arc(0, 0, TOWER_RADIUS * 0.88, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // 可旋轉主砲：雙導軌、裝甲炮管、發光磁軌與炮口制退器。
+  ctx.save();
+  ctx.rotate(aim);
+  ctx.translate(-recoil, 0);
+  const barrelLength = TOWER_RADIUS * 1.9;
+  const barrelWidth = 11 + Math.min((s.inRunLevels.damage ?? 0) * 0.1, 4);
+  const barrel = ctx.createLinearGradient(0, -barrelWidth / 2, 0, barrelWidth / 2);
+  barrel.addColorStop(0, '#b9d8ed');
+  barrel.addColorStop(0.22, '#315b79');
+  barrel.addColorStop(0.55, '#10283f');
+  barrel.addColorStop(1, '#07131f');
+  ctx.fillStyle = barrel;
+  ctx.beginPath();
+  ctx.moveTo(2, -barrelWidth / 2);
+  ctx.lineTo(barrelLength, -barrelWidth * 0.34);
+  ctx.lineTo(barrelLength, barrelWidth * 0.34);
+  ctx.lineTo(2, barrelWidth / 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#68b9e8';
+  ctx.lineWidth = 1.3;
+  ctx.stroke();
+
+  // 中央電漿磁軌。
+  ctx.shadowColor = fireFlash > 0.2 ? '#ffffff' : '#52dcff';
+  ctx.shadowBlur = 6 + fireFlash * 10;
+  ctx.strokeStyle = fireFlash > 0.2 ? '#eaffff' : '#62dfff';
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(7, 0);
+  ctx.lineTo(barrelLength + 4, 0);
+  ctx.stroke();
+
+  // 炮口制退器與蓄能環。
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#152e43';
+  ctx.fillRect(barrelLength - 3, -barrelWidth * 0.56, 7, barrelWidth * 1.12);
+  ctx.strokeStyle = '#8ccbe9';
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(barrelLength - 3, -barrelWidth * 0.56, 7, barrelWidth * 1.12);
+  if (fireFlash > 0) {
+    ctx.globalAlpha = fireFlash;
+    ctx.shadowColor = '#baf7ff';
+    ctx.shadowBlur = 15;
+    ctx.strokeStyle = '#e9ffff';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(barrelLength + 7, 0, 5 + (1 - fireFlash) * 8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(barrelLength + 5, 0, 3 + fireFlash * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // 旋轉炮塔座：炮管根部的裝甲圓盤與方向定位燈。
+  ctx.save();
+  ctx.shadowColor = tint(zone.accent, 0.75);
+  ctx.shadowBlur = 10 + fireFlash * 8;
+  const turretShell = ctx.createRadialGradient(-5, -7, 2, 0, 0, TOWER_RADIUS * 0.83);
+  turretShell.addColorStop(0, '#6f9fbd');
+  turretShell.addColorStop(0.38, '#23445e');
+  turretShell.addColorStop(1, '#0b1d30');
+  ctx.fillStyle = turretShell;
+  ctx.beginPath();
+  ctx.arc(0, 0, TOWER_RADIUS * 0.78, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#75bde3';
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+  ctx.restore();
   // Build 外觀：燃燒軌道、冰霜晶環、防禦護盾與經濟資料粒子。
   if (hasPerk(s.perks, 'incendiary')) {
     ctx.fillStyle = '#ff7a3d'; ctx.shadowColor = '#ff7a3d'; ctx.shadowBlur = 9;
