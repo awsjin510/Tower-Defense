@@ -47,6 +47,7 @@ import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
 import { render } from './ui/renderer';
 import { Vfx } from './ui/vfx';
 import { icon, type IconName } from './ui/icons';
+import { CARD_RARITY_LABEL, cardArtUrl, cardRarity } from './ui/card-art';
 import { Sound } from './ui/sound';
 import { TIER_CONFIG, tierMods } from './core/tiers';
 import { selectTier, settleTier, tierBest } from './meta/tiers';
@@ -437,6 +438,23 @@ function cardIcon(def: CardDef): IconName {
   return 'attack';
 }
 
+function cardArtMarkup(def: CardDef, star: number, locked = false): string {
+  const rarity = cardRarity(def.id);
+  return `<div class="card-art${locked ? ' locked-art' : ''}">
+    <img class="card-art-image" src="${cardArtUrl(def.id)}" alt="" loading="lazy">
+    <span class="card-art-shade"></span>
+    <span class="card-icon" style="color:${def.color}">${locked ? icon('lock') : icon(cardIcon(def))}</span>
+    ${locked ? '' : `<span class="card-stars">${starDots(star, CARD_CONFIG.starMax)}</span>`}
+    <span class="card-rarity rar-${rarity}">${CARD_RARITY_LABEL[rarity]}</span>
+    ${!locked && def.set ? `<span class="card-set">${setName(def.set)}套</span>` : ''}
+  </div>`;
+}
+
+function installCardArtFallback(cell: HTMLElement): void {
+  const image = cell.querySelector<HTMLImageElement>('.card-art-image');
+  image?.addEventListener('error', () => image.remove(), { once: true });
+}
+
 function setName(setId: string | undefined): string | null {
   return setId ? CARD_SETS.find((s) => s.id === setId)?.name ?? null : null;
 }
@@ -450,6 +468,9 @@ function refreshCardCell(cell: HTMLElement): void {
   cell.classList.toggle('owned', owned);
   cell.classList.toggle('equipped', equipped);
   cell.classList.toggle('locked', !owned);
+  const rarity = cardRarity(id);
+  cell.classList.remove('rar-common', 'rar-rare', 'rar-epic', 'rar-legendary');
+  cell.classList.add(`rar-${rarity}`);
   if (!owned) {
     const requirements = [
       def.unlockWave > 0 ? `W${def.unlockWave}` : '',
@@ -458,9 +479,10 @@ function refreshCardCell(cell: HTMLElement): void {
       def.unlockKills ? `${formatNumber(def.unlockKills)} 擊殺` : '',
     ].filter(Boolean).join(' · ');
     cell.innerHTML = `
-      <div class="card-art locked-art">${icon('lock')}</div>
+      ${cardArtMarkup(def, 0, true)}
       <div class="card-name">${def.name}</div>
       <div class="card-sub">挑戰：${requirements || '立即解鎖'}</div>`;
+    installCardArtFallback(cell);
     return;
   }
   const cost = starUpCost(star);
@@ -470,15 +492,10 @@ function refreshCardCell(cell: HTMLElement): void {
   cell.style.setProperty('--card-color', def.color);
   const bonusText = describeBonus(def);
   const bonusActive = def.bonus ? star >= def.bonus.atStar : false;
-  const setLabel = setName(def.set);
   const contribution = save.lastRunReport?.cards[id] ?? 0;
   const estimate = def.effect.stat === 'maxHealth' || def.effect.kind==='thorns' || def.effect.kind==='lifesteal' ? '生存提升' : def.effect.stat==='coinBonus' || def.effect.kind==='interest' ? '收益提升' : '輸出提升';
   cell.innerHTML = `
-    <div class="card-art" style="background:linear-gradient(160deg, ${def.color}44, ${def.color}11)">
-      <span class="card-icon" style="color:${def.color}">${icon(cardIcon(def))}</span>
-      <span class="card-stars">${starDots(star, CARD_CONFIG.starMax)}</span>
-      ${setLabel ? `<span class="card-set">${setLabel}套</span>` : ''}
-    </div>
+    ${cardArtMarkup(def, star)}
     <div class="card-name">${def.name}</div>
     <div class="card-sub">${describeCard(def, star)}</div>
     <div class="card-estimate">${equipped?'目前生效':`裝備預估：${estimate}`}</div>
@@ -491,6 +508,7 @@ function refreshCardCell(cell: HTMLElement): void {
         canStar ? (save.coins >= (cost as number) ? `升星 ${icon('coin')}${formatNumber(cost as number)}` : `升星 🧩${shardCost}`) : 'MAX'
       }</button>
     </div>`;
+  installCardArtFallback(cell);
   (cell.querySelector('.card-equip') as HTMLButtonElement).addEventListener('click', () => {
     if (!equipped && save.equipped.length >= save.cardSlots && cardStar(save, id) > 0) {
       // 沒空槽時給提示

@@ -63,6 +63,14 @@ describe('save', () => {
     expect(local.workshopLevels).not.toBe(originalLevels);
   });
 
+  it('套用雲端存檔時保留五組卡片配置', () => {
+    const local = defaultSave();
+    const cloud = defaultSave();
+    cloud.cardPresets = [['as'], ['hp'], ['coin'], ['range'], ['crit']];
+    applySave(local, cloud);
+    expect(local.cardPresets).toEqual(cloud.cardPresets);
+  });
+
   it('雲端 API 接受遊戲實際產生的小數金幣', () => {
     const save = { ...defaultSave(), coins: 23.2, updatedAt: Date.now() };
     expect(validSave(save)).toBe(true);

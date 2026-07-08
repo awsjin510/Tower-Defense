@@ -203,23 +203,33 @@
       #card-filters button { border:1px solid var(--brd); border-radius:999px; }
       #card-filters button.active { color:#fff; border-color:#58a6ff; background:#203554; box-shadow:0 0 10px rgba(88,166,255,.22); }
       .card-cell {
-        background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 10px;
+        --rarity:#93a3b8; background:linear-gradient(180deg, color-mix(in srgb, var(--rarity) 8%, #161b22), #11161e 42%);
+        border: 1px solid color-mix(in srgb, var(--rarity) 48%, #30363d); border-radius: 12px; padding: 8px;
         display: flex; flex-direction: column; gap: 6px;
       }
-      .card-cell.equipped { border-color: #58a6ff; box-shadow: 0 0 0 1px #58a6ff, 0 0 12px rgba(88,166,255,0.25); }
-      .card-cell.locked { opacity: 0.6; }
+      .card-cell.rar-common { --rarity:#93a3b8; }
+      .card-cell.rar-rare { --rarity:#4aa3ff; }
+      .card-cell.rar-epic { --rarity:#c07dff; }
+      .card-cell.rar-legendary { --rarity:#ffcf4a; box-shadow:0 0 18px rgba(255,207,74,.10); }
+      .card-cell.equipped { border-color: var(--rarity); box-shadow: 0 0 0 1px var(--rarity), 0 0 15px color-mix(in srgb, var(--rarity) 30%, transparent); }
+      .card-cell.locked { opacity: 0.72; }
       .card-art {
-        position: relative; height: 76px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
-        border: 1px solid #ffffff14;
+        position: relative; height: 132px; border-radius: 9px; overflow:hidden; display:flex; align-items:center; justify-content:center;
+        border:1px solid color-mix(in srgb, var(--rarity) 65%, #ffffff18); background:#0b0e13;
       }
-      .card-art.locked-art { background: #0d1117; font-size: 30px; }
-      .card-icon { font-size: 34px; }
-      .card-stars { position: absolute; bottom: 4px; left: 0; right: 0; text-align: center; font-size: 12px; color: #e3b341; letter-spacing: 1px; }
+      .card-art-image { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transition:transform .22s ease, filter .22s ease; }
+      .card-cell:hover .card-art-image { transform:scale(1.035); }
+      .card-art-shade { position:absolute; inset:0; background:linear-gradient(180deg,rgba(0,0,0,.03) 35%,rgba(5,8,14,.88) 100%); }
+      .card-art.locked-art .card-art-image { filter:grayscale(.85) brightness(.42); }
+      .card-art.locked-art .card-icon { left:50%; top:50%; transform:translate(-50%,-50%); width:34px; height:34px; color:#d5deea !important; }
+      .card-icon { position:absolute; z-index:2; left:6px; top:6px; width:21px; height:21px; display:grid; place-items:center; padding:4px; border-radius:7px; background:rgba(5,9,15,.72); backdrop-filter:blur(5px); }
+      .card-stars { position:absolute; z-index:2; bottom:5px; left:0; right:0; text-align:center; font-size:12px; color:#ffd45c; text-shadow:0 1px 5px #000; letter-spacing:1px; }
+      .card-rarity { position:absolute; z-index:3; top:6px; right:6px; padding:2px 6px; border-radius:999px; font-size:9px; font-weight:900; color:#09101a; background:var(--rarity); box-shadow:0 0 10px color-mix(in srgb, var(--rarity) 55%, transparent); }
       .card-name { font-size: 14px; font-weight: 800; }
       .card-sub { font-size: 11px; color: #8b949e; min-height: 26px; }
       .card-bonus { font-size: 10px; color: #6b7688; margin: -2px 0 3px; }
       .card-bonus.on { color: #7ee0b0; text-shadow: 0 0 8px rgba(126,224,176,.35); }
-      .card-set { position: absolute; top: 4px; right: 4px; font-size: 9px; font-weight: 900; color: #0c1016; background: var(--card-color, #e3b341); padding: 1px 5px; border-radius: 999px; }
+      .card-set { position:absolute; z-index:3; bottom:6px; right:6px; font-size:9px; font-weight:900; color:#0c1016; background:var(--card-color,#e3b341); padding:1px 5px; border-radius:999px; }
       .set-active { color: #ffd257; font-weight: 800; }
       .card-actions { display: flex; gap: 6px; }
       .card-actions button {
@@ -237,6 +247,7 @@
       #recommended-builds button { flex:0 0 auto; padding:7px 10px; border:1px solid #34445d; border-radius:15px; background:#111a29; color:#bcd0eb; font-size:11px; }
       .card-actions button:disabled { opacity: 0.4; cursor: default; }
       #cards-screen h1 { font-size: 20px; }
+      @media (max-width:480px) { .card-art { height:108px; } .card-cell { padding:6px; } }
 
       /* 研究室 */
       #research-list { display: flex; flex-direction: column; gap: 10px; }

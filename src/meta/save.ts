@@ -148,7 +148,7 @@ export function applySave(target: SaveData, source: SaveData): void {
     ultimates: { ...(source.ultimates ?? {}) },
     tierBestWave: { ...(source.tierBestWave ?? {}) },
     dailyMissions: (source.dailyMissions ?? []).map((m) => ({ ...m })),
-    cardPresets: Array.from({ length: 3 }, (_, i) => [...(source.cardPresets?.[i] ?? [])]),
+    cardPresets: Array.from({ length: 5 }, (_, i) => [...(source.cardPresets?.[i] ?? [])]),
     equippedUltimates: [...(source.equippedUltimates ?? [])].slice(0, 2),
     ultimateBranches: { ...(source.ultimateBranches ?? {}) },
     lastRunReport: source.lastRunReport ? structuredClone(source.lastRunReport) : null,
