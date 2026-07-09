@@ -53,21 +53,119 @@ function lighten(hex: string, amt: number): string {
   return `rgb(${m(r)}, ${m(g)}, ${m(b)})`;
 }
 
-function strokeHex(
+function screenPos(w: number, h: number, scale: number, x: number, y: number, ox = 0, oy = 0): { x: number; y: number } {
+  return { x: w / 2 + ox + x * scale, y: h / 2 + oy + y * scale };
+}
+
+function drawSkillCue(
   ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  r: number
+  w: number,
+  h: number,
+  scale: number,
+  cue: { id: string; color: string; life: number; maxLife: number },
+  s: SimState,
+  ox: number,
+  oy: number
 ): void {
-  ctx.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const a = Math.PI / 6 + (i / 6) * Math.PI * 2;
-    const px = x + Math.cos(a) * r;
-    const py = y + Math.sin(a) * r;
-    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  const progress = 1 - cue.life / cue.maxLife;
+  const fade = Math.max(0, cue.life / cue.maxLife);
+  const cx = w / 2 + ox;
+  const cy = h / 2 + oy;
+  const shortSide = Math.min(w, h);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+
+  if (cue.id === 'golden') {
+    const radius = shortSide * (0.18 + progress * 0.16);
+    const grad = ctx.createRadialGradient(cx, cy, radius * 0.2, cx, cy, radius * 1.35);
+    grad.addColorStop(0, 'rgba(255, 225, 120, 0.18)');
+    grad.addColorStop(0.55, tint(cue.color, 0.14 * fade));
+    grad.addColorStop(1, 'rgba(227, 179, 65, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 1.35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255, 220, 100, ${0.45 * fade})`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 12]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (let i = 0; i < 9; i++) {
+      const a = s.time * 2.4 + i * Math.PI * 2 / 9;
+      const r = radius * (0.72 + (i % 3) * 0.14);
+      ctx.globalAlpha = fade * (0.45 + (i % 2) * 0.25);
+      ctx.fillStyle = '#ffe27a';
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.72, 2.5 + (i % 3), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (cue.id === 'timefreeze') {
+    const scanY = h * (0.12 + progress * 0.76);
+    const band = ctx.createLinearGradient(0, scanY - 34, 0, scanY + 34);
+    band.addColorStop(0, 'rgba(114,216,255,0)');
+    band.addColorStop(0.5, `rgba(114,216,255,${0.32 * fade})`);
+    band.addColorStop(1, 'rgba(114,216,255,0)');
+    ctx.fillStyle = band;
+    ctx.fillRect(0, scanY - 38, w, 76);
+    ctx.strokeStyle = `rgba(185,247,255,${0.7 * fade})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, scanY);
+    ctx.lineTo(w, scanY);
+    ctx.stroke();
+    ctx.strokeStyle = `rgba(114,216,255,${0.42 * fade})`;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, shortSide * (0.16 + progress * 0.16 + i * 0.065), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else if (cue.id === 'blackhole') {
+    const anchor = s.blackHole ? screenPos(w, h, scale, s.blackHole.x, s.blackHole.y, ox, oy) : { x: cx, y: cy };
+    const radius = shortSide * (0.08 + progress * 0.12);
+    const grad = ctx.createRadialGradient(anchor.x, anchor.y, 0, anchor.x, anchor.y, radius * 1.9);
+    grad.addColorStop(0, `rgba(20, 5, 35, ${0.8 * fade})`);
+    grad.addColorStop(0.45, `rgba(184, 120, 255, ${0.24 * fade})`);
+    grad.addColorStop(1, 'rgba(184, 120, 255, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(anchor.x, anchor.y, radius * 1.9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(210, 165, 255, ${0.7 * fade})`;
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.ellipse(anchor.x, anchor.y, radius * (1 + i * 0.24), radius * (0.48 + i * 0.1), s.time * 2.2 + i, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else if (cue.id === 'orbital') {
+    const target = s.orbital ? screenPos(w, h, scale, s.orbital.x, s.orbital.y, ox, oy) : { x: cx, y: cy };
+    const radius = shortSide * (0.07 + progress * 0.1);
+    ctx.strokeStyle = `rgba(255, 150, 90, ${0.75 * fade})`;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let i = 0; i < 4; i++) {
+      const a = i * Math.PI / 2 + Math.PI / 4;
+      ctx.beginPath();
+      ctx.moveTo(target.x + Math.cos(a) * radius * 0.35, target.y + Math.sin(a) * radius * 0.35);
+      ctx.lineTo(target.x + Math.cos(a) * radius * 1.35, target.y + Math.sin(a) * radius * 1.35);
+      ctx.stroke();
+    }
+  } else {
+    ctx.strokeStyle = tint(cue.color, 0.55 * fade);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, shortSide * (0.16 + progress * 0.2), 0, Math.PI * 2);
+    ctx.stroke();
   }
-  ctx.closePath();
-  ctx.stroke();
+
+  ctx.restore();
+  ctx.globalAlpha = 1;
 }
 
 /** 描出敵人形狀路徑（不填色），讓呼叫端可先填底色再疊閃白 */
@@ -292,18 +390,29 @@ export function render(
 
   // 戰術地板：六角能量格 + 方位刻度，讓戰場從「空背景」變成可讀的防衛陣地。
   ctx.save();
-  ctx.strokeStyle = tint(zone.accent, 0.11);
+  ctx.strokeStyle = tint(zone.accent, 0.13);
+  ctx.fillStyle = tint(zone.accent, 0.16);
   ctx.lineWidth = 1;
-  const hexR = 28;
-  const stepX = hexR * Math.sqrt(3);
-  const stepY = hexR * 1.5;
-  for (let y0 = -ARENA_RADIUS - stepY; y0 <= ARENA_RADIUS + stepY; y0 += stepY) {
-    const row = Math.round((y0 + ARENA_RADIUS + stepY) / stepY);
-    for (let x0 = -ARENA_RADIUS - stepX; x0 <= ARENA_RADIUS + stepX; x0 += stepX) {
-      const x = x0 + (row % 2 ? stepX / 2 : 0);
-      if (Math.hypot(x, y0) < ARENA_RADIUS * 1.04) strokeHex(ctx, x, y0, hexR);
+  for (let i = 0; i < 38; i++) {
+    const a = i * 2.399 + Math.sin(s.time * 0.05 + i) * 0.04;
+    const r = 72 + ((i * 47) % Math.round(ARENA_RADIUS - 88));
+    const x = Math.cos(a) * r;
+    const y0 = Math.sin(a * 1.13) * r;
+    if (Math.hypot(x, y0) > ARENA_RADIUS * 0.98) continue;
+    if (i % 3 === 0) {
+      const len = 8 + (i % 5) * 3;
+      ctx.beginPath();
+      ctx.moveTo(x - Math.cos(a) * len, y0 - Math.sin(a) * len);
+      ctx.lineTo(x + Math.cos(a) * len, y0 + Math.sin(a) * len);
+      ctx.stroke();
+    } else {
+      ctx.globalAlpha = 0.35 + (i % 4) * 0.08;
+      ctx.beginPath();
+      ctx.arc(x, y0, 1 + (i % 3) * 0.45, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
+  ctx.globalAlpha = 1;
   ctx.strokeStyle = tint(zone.accent, 0.28);
   ctx.lineWidth = 2;
   for (let i = 0; i < 16; i++) {
@@ -574,6 +683,7 @@ export function render(
   // 終極武器衝擊波（黑洞）：從中心擴散的環
   for (const sh of vfx.shocks) {
     const t = 1 - sh.life / sh.maxLife;
+    if (sh.source === 'ultimate') continue;
     const r = t * ARENA_RADIUS * 1.35;
     ctx.globalAlpha = (1 - t) * 0.9;
     ctx.strokeStyle = sh.color;
@@ -754,6 +864,33 @@ export function render(
   ctx.globalAlpha = 1;
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  for (const sh of vfx.shocks) {
+    if (sh.source !== 'ultimate') continue;
+    const t = 1 - sh.life / sh.maxLife;
+    const fade = Math.max(0, sh.life / sh.maxLife);
+    const radius = Math.min(w, h) * (0.08 + t * 0.42);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const flash = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, radius * 1.55);
+    flash.addColorStop(0, tint(sh.color, 0.24 * fade));
+    flash.addColorStop(0.5, tint(sh.color, 0.12 * fade));
+    flash.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = flash;
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, radius * 1.55, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = tint(sh.color, 0.58 * fade);
+    ctx.lineWidth = 3 * fade + 1;
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  for (const cue of vfx.ultCues) {
+    drawSkillCue(ctx, w, h, scale, cue, s, ox, oy);
+  }
 
   // 黃金塔啟用：全螢幕金光暈邊（螢幕座標）
   const goldActive = s.ultActive.some((a) => a.coinMult > 1);

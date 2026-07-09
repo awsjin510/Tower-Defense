@@ -43,6 +43,14 @@ interface Shock {
   life: number;
   maxLife: number;
   color: string;
+  source: 'ultimate' | 'zone';
+}
+
+interface UltimateCue {
+  id: string;
+  color: string;
+  life: number;
+  maxLife: number;
 }
 
 /** 彈射鏈（多重射擊）：兩點間的閃電弧，含固定抖動點以維持確定外觀 */
@@ -68,6 +76,7 @@ export class Vfx {
   beams: Beam[] = [];
   shocks: Shock[] = [];
   chains: Chain[] = [];
+  ultCues: UltimateCue[] = [];
   /** 黃金塔啟用時的金光殘留（秒） */
   goldGlow = 0;
   flash = new Map<number, number>();
@@ -159,11 +168,12 @@ export class Vfx {
           break;
         }
         case 'ultNuke':
-          this.shocks.push({ life: 0.6, maxLife: 0.6, color: e.color || '#b878ff' });
+          this.shocks.push({ life: 0.5, maxLife: 0.5, color: e.color || '#b878ff', source: 'ultimate' });
           this.shake = Math.min(this.shake + 8, 12);
           break;
         case 'ultActivate':
-          this.goldGlow = Math.max(this.goldGlow, 0.6);
+          this.ultCues.push({ id: e.id, color: e.color, life: 0.7, maxLife: 0.7 });
+          if (e.id === 'golden') this.goldGlow = Math.max(this.goldGlow, 0.6);
           break;
         case 'chain': {
           // 為閃電弧預生成中段抖動（用內部 rng，不污染遊戲 RNG）
@@ -178,7 +188,7 @@ export class Vfx {
           break;
         }
         case 'zonePulse':
-          this.shocks.push({ life: 0.75, maxLife: 0.75, color: e.color });
+          this.shocks.push({ life: 0.75, maxLife: 0.75, color: e.color, source: 'zone' });
           this.shake = Math.min(this.shake + 4, 10);
           break;
         // 'wave' / 'perkOffer' 由 UI 另行處理
@@ -214,6 +224,10 @@ export class Vfx {
     for (let i = this.shocks.length - 1; i >= 0; i--) {
       this.shocks[i].life -= dt;
       if (this.shocks[i].life <= 0) this.shocks.splice(i, 1);
+    }
+    for (let i = this.ultCues.length - 1; i >= 0; i--) {
+      this.ultCues[i].life -= dt;
+      if (this.ultCues[i].life <= 0) this.ultCues.splice(i, 1);
     }
     for (let i = this.chains.length - 1; i >= 0; i--) {
       this.chains[i].life -= dt;
