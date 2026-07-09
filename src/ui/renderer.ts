@@ -53,6 +53,23 @@ function lighten(hex: string, amt: number): string {
   return `rgb(${m(r)}, ${m(g)}, ${m(b)})`;
 }
 
+function strokeHex(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number
+): void {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 6 + (i / 6) * Math.PI * 2;
+    const px = x + Math.cos(a) * r;
+    const py = y + Math.sin(a) * r;
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.stroke();
+}
+
 /** 描出敵人形狀路徑（不填色），讓呼叫端可先填底色再疊閃白 */
 function traceEnemy(ctx: CanvasRenderingContext2D, e: Enemy, time: number): void {
   const r = e.radius;
@@ -273,6 +290,41 @@ export function render(
   }
   ctx.globalAlpha = 1;
 
+  // 戰術地板：六角能量格 + 方位刻度，讓戰場從「空背景」變成可讀的防衛陣地。
+  ctx.save();
+  ctx.strokeStyle = tint(zone.accent, 0.11);
+  ctx.lineWidth = 1;
+  const hexR = 28;
+  const stepX = hexR * Math.sqrt(3);
+  const stepY = hexR * 1.5;
+  for (let y0 = -ARENA_RADIUS - stepY; y0 <= ARENA_RADIUS + stepY; y0 += stepY) {
+    const row = Math.round((y0 + ARENA_RADIUS + stepY) / stepY);
+    for (let x0 = -ARENA_RADIUS - stepX; x0 <= ARENA_RADIUS + stepX; x0 += stepX) {
+      const x = x0 + (row % 2 ? stepX / 2 : 0);
+      if (Math.hypot(x, y0) < ARENA_RADIUS * 1.04) strokeHex(ctx, x, y0, hexR);
+    }
+  }
+  ctx.strokeStyle = tint(zone.accent, 0.28);
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const r1 = ARENA_RADIUS + (i % 4 === 0 ? 6 : 12);
+    const r2 = ARENA_RADIUS + 22;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1);
+    ctx.lineTo(Math.cos(a) * r2, Math.sin(a) * r2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = lighten(zone.accent, 0.58);
+  ctx.font = '700 11px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const labels = [['N', 0, -1], ['E', 1, 0], ['S', 0, 1], ['W', -1, 0]] as const;
+  for (const [label, lx, ly] of labels) ctx.fillText(label, lx * (ARENA_RADIUS + 34), ly * (ARENA_RADIUS + 34));
+  ctx.restore();
+  ctx.globalAlpha = 1;
+
   // 雷達網格：戰區色的同心圓 + 輻條 + 旋轉掃描線
   ctx.strokeStyle = zone.grid;
   ctx.lineWidth = 1.5 / scale;
@@ -397,6 +449,27 @@ export function render(
   }
   ctx.restore();
 
+  // 敵人動態尾跡：速度型更長、Boss 更厚，移動方向一眼可讀。
+  ctx.save();
+  ctx.lineCap = 'round';
+  for (const e of s.enemies) {
+    const base = e.golden ? '#ffd54a' : (enemyColor.get(e.typeId) ?? '#e05555');
+    const dist = Math.hypot(e.x, e.y) || 1;
+    const ux = e.x / dist;
+    const uy = e.y / dist;
+    const trail = e.typeId === 'fast' ? 34 : e.typeId === 'boss' ? 24 : e.typeId === 'tank' ? 12 : 18;
+    const grad = ctx.createLinearGradient(e.x + ux * trail, e.y + uy * trail, e.x, e.y);
+    grad.addColorStop(0, tint(base, 0));
+    grad.addColorStop(1, tint(base, e.typeId === 'boss' ? 0.46 : 0.28));
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = e.typeId === 'boss' ? 8 : Math.max(2, e.radius * 0.42);
+    ctx.beginPath();
+    ctx.moveTo(e.x + ux * trail, e.y + uy * trail);
+    ctx.lineTo(e.x - ux * e.radius * 0.15, e.y - uy * e.radius * 0.15);
+    ctx.stroke();
+  }
+  ctx.restore();
+
   // 敵人（形狀 + 血條 + 命中閃白）
   for (const e of s.enemies) {
     const base = e.golden ? '#ffd54a' : (enemyColor.get(e.typeId) ?? '#e05555');
@@ -497,7 +570,7 @@ export function render(
     }
   }
 
-  // 塔：固定式科技防禦核心，不顯示外露炮管或旋轉瞄準結構。
+  // 塔：科技防禦核心 + 可讀的主炮朝向。升級越高，裝甲翼與外環越厚。
   // 終極武器衝擊波（黑洞）：從中心擴散的環
   for (const sh of vfx.shocks) {
     const t = 1 - sh.life / sh.maxLife;
@@ -530,6 +603,53 @@ export function render(
   ctx.strokeStyle = '#4c8fc4';
   ctx.lineWidth = 2;
   ctx.stroke();
+  ctx.restore();
+
+  const nearest = s.enemies.reduce<Enemy | null>((best, e) => {
+    if (!best) return e;
+    return Math.hypot(e.x, e.y) < Math.hypot(best.x, best.y) ? e : best;
+  }, null);
+  const aim = nearest ? Math.atan2(nearest.y, nearest.x) : s.time * 0.25;
+  const offenseLv = (s.inRunLevels.damage ?? 0) + (s.workshopLevels.ws_damage ?? 0);
+  const wingCount = Math.min(6, 3 + Math.floor(offenseLv / 18));
+  ctx.save();
+  ctx.rotate(aim);
+  ctx.shadowColor = fireFlash > 0 ? '#ffe08a' : tint(zone.accent, 0.65);
+  ctx.shadowBlur = 8 + fireFlash * 18;
+  const barrel = ctx.createLinearGradient(8, 0, TOWER_RADIUS + 34, 0);
+  barrel.addColorStop(0, '#24445f');
+  barrel.addColorStop(0.55, lighten(zone.accent, 0.35));
+  barrel.addColorStop(1, fireFlash > 0 ? '#fff3ad' : '#9edcff');
+  ctx.fillStyle = barrel;
+  ctx.beginPath();
+  ctx.roundRect(4, -5, TOWER_RADIUS + 30 + fireFlash * 7, 10, 5);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(220,245,255,.55)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  if (fireFlash > 0) {
+    ctx.fillStyle = `rgba(255,226,122,${0.35 + fireFlash * 0.45})`;
+    ctx.beginPath();
+    ctx.ellipse(TOWER_RADIUS + 38, 0, 8 + fireFlash * 12, 4 + fireFlash * 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.rotate(s.time * 0.12);
+  for (let i = 0; i < wingCount; i++) {
+    const a = (i / wingCount) * Math.PI * 2;
+    ctx.save();
+    ctx.rotate(a);
+    ctx.fillStyle = 'rgba(17,35,55,.82)';
+    ctx.strokeStyle = tint(zone.accent, 0.5);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(TOWER_RADIUS * 0.78, -4, 22, 8, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
   ctx.restore();
 
   ctx.save();

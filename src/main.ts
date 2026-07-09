@@ -273,12 +273,15 @@ interface UpgradeButton {
 
 function makeUpgradeButton(def: UpgradeDef, onClick: () => void): UpgradeButton {
   const el = document.createElement('button');
-  el.className = 'upgrade-btn';
+  el.className = `upgrade-btn upgrade-${def.category}`;
   el.innerHTML =
-    `<span class="name"></span>` +
-    `<span class="value"><span class="current"></span><span class="preview"></span></span>` +
-    `<span class="milestone"></span>` +
-    `<span class="foot"><span class="delta"></span><span class="cost"></span></span>`;
+    `<span class="upgrade-icon">${icon(def.category === 'attack' ? 'attack' : def.category === 'defense' ? 'defense' : 'economy')}</span>` +
+    `<span class="upgrade-copy">` +
+      `<span class="name"></span>` +
+      `<span class="value"><span class="current"></span><span class="preview"></span></span>` +
+      `<span class="milestone"></span>` +
+      `<span class="foot"><span class="delta"></span><span class="cost"></span></span>` +
+    `</span>`;
   el.dataset.upgrade = def.id;
   el.addEventListener('click', () => {
     onClick();
@@ -302,6 +305,8 @@ function refreshUpgradeButton(
   const { def, el } = btn;
   const maxed = isMaxed(def, level);
   const cost = actualCost ?? upgradeCost(def, level);
+  el.classList.remove('upgrade-attack', 'upgrade-defense', 'upgrade-economy');
+  el.classList.add(`upgrade-${def.category}`);
   (el.querySelector('.name') as HTMLElement).textContent = `${def.name} Lv.${level}`;
   // 目前的實際數值（含工坊 + 場內 + Perk 的總和），一眼看懂目前狀態
   (el.querySelector('.current') as HTMLElement).textContent = fmtStatValue(def.stat, currentValue);
