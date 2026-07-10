@@ -1,4 +1,4 @@
-import type { BossArchetype, Bullet, DamageSource, EliteAffix, Enemy, RouteId, SimEvent, Stats, TargetPriority } from './types';
+import type { BossArchetype, Bullet, DamageSource, EliteAffix, Enemy, RouteId, SimEvent, SpecializationId, Stats, TacticId, TargetPriority, UpgradeCategory } from './types';
 import { computeStats, IN_RUN_UPGRADES, type Levels } from './stats';
 import { upgradeCost, isMaxed } from './economy';
 import { applyPerks, hasPerk, isPerkWave, PERK_CONFIG, rerollCost, rollPerkChoices } from './perks';
@@ -26,15 +26,26 @@ export const ARENA_RADIUS = 330;
 export const WORLD_SIZE = ARENA_RADIUS * 2 + 60;
 export const TOWER_RADIUS = 22;
 const ENEMY_ATTACK_INTERVAL = 1.0;
-export const TARGET_PRIORITIES: TargetPriority[] = ['closest', 'farthest', 'highHp', 'lowHp', 'elite', 'ranged'];
-export const ROUTES: Record<RouteId, { name: string; desc: string; hp: number; dmg: number; reward: number }> = {
-  safe: { name: '穩定航道', desc: '敵人 -10% HP／傷害，獎勵 -10%', hp: 0.9, dmg: 0.9, reward: 0.9 },
-  danger: { name: '危險裂隙', desc: '敵人 +25% HP、+15% 傷害，獎勵 +50%', hp: 1.25, dmg: 1.15, reward: 1.5 },
-  anomaly: { name: '異常星雲', desc: '敵人 +10% HP、更多詞綴，獎勵 +25%', hp: 1.1, dmg: 1, reward: 1.25 },
+export const TARGET_PRIORITIES: TargetPriority[] = ['closest', 'farthest', 'highHp', 'lowHp', 'elite', 'ranged', 'support'];
+export const ROUTES: Record<RouteId, { name: string; desc: string; hp: number; dmg: number; reward: number; count: number }> = {
+  safe: { name: '穩定航道', desc: '敵人 -10% HP／傷害，獎勵 -10%', hp: 0.9, dmg: 0.9, reward: 0.9, count: 1 },
+  danger: { name: '危險裂隙', desc: '敵人 +25% HP、+15% 傷害，獎勵 +50%', hp: 1.25, dmg: 1.15, reward: 1.5, count: 1 },
+  anomaly: { name: '異常星雲', desc: '敵人 +10% HP、更多詞綴，獎勵 +25%', hp: 1.1, dmg: 1, reward: 1.25, count: 1 },
+  swarm: { name: '蟲群航道', desc: '敵群 +35%、單體較弱，獎勵 +20%', hp: 0.72, dmg: 0.85, reward: 1.2, count: 1.35 },
+  armored: { name: '重甲航道', desc: '更多坦克與支援單位，獎勵 +40%', hp: 1.35, dmg: 1.05, reward: 1.4, count: 0.82 },
 };
 export const ELITE_AFFIXES: EliteAffix[] = ['shielded', 'regenerating', 'enraged', 'stealth', 'volatile', 'healer', 'reflective', 'blinking'];
 export const BOSS_ARCHETYPES: BossArchetype[] = ['swarm', 'bulwark', 'leech', 'chrono'];
 export const bossArchetypeForWave = (wave: number): BossArchetype => BOSS_ARCHETYPES[Math.max(0, Math.floor(wave / 10) - 1) % BOSS_ARCHETYPES.length];
+
+export interface WaveChallenge {
+  type: 'noDamage' | 'quickClear' | 'outerRing';
+  name: string;
+  goal: number;
+  progress: number;
+  failed: boolean;
+  startedAt: number;
+}
 
 export interface SimState {
   wave: number;
@@ -64,6 +75,13 @@ export interface SimState {
   targetPriority: TargetPriority;
   activeRoute: RouteId;
   pendingRoute: boolean;
+  queuedPerks: string[] | null;
+  specializations: Partial<Record<UpgradeCategory, SpecializationId>>;
+  pendingSpecialization: UpgradeCategory | null;
+  coreEnergy: number;
+  tacticCooldown: number;
+  overclockTimer: number;
+  challenge: WaveChallenge | null;
   bossSlowTimer: number;
   damageBreakdown: Record<DamageSource, number>;
   damageTaken: number;
@@ -152,6 +170,13 @@ export function newRun(
     targetPriority: 'closest',
     activeRoute: 'safe',
     pendingRoute: false,
+    queuedPerks: null,
+    specializations: {},
+    pendingSpecialization: null,
+    coreEnergy: 20,
+    tacticCooldown: 0,
+    overclockTimer: 0,
+    challenge: null,
     bossSlowTimer: 0,
     damageBreakdown: { direct: 0, burn: 0, chain: 0, splash: 0, bounce: 0, thorns: 0, ultimate: 0, satellite: 0 },
     damageTaken: 0,
@@ -207,7 +232,16 @@ function combatDamageMult(s: SimState): number {
   let m = 1;
   if (hasPerk(s.perks, 'adrenaline') && s.towerHp <= s.stats.maxHealth * 0.3) m *= 1.55;
   if (hasPerk(s.perks, 'apex')) m *= 1 + s.apexKills * 0.005;
+  if (hasPerk(s.perks, 'multishot') && hasPerk(s.perks, 'pierce') && hasPerk(s.perks, 'railgun')) m *= 1.12;
   return m;
+}
+
+export function activeSynergies(s: Pick<SimState, 'perks'>): string[] {
+  const out: string[] = [];
+  if (hasPerk(s.perks, 'incendiary') && hasPerk(s.perks, 'volatileFuel') && hasPerk(s.perks, 'wildfire')) out.push('煉獄鏈');
+  if (hasPerk(s.perks, 'cryoRounds') && hasPerk(s.perks, 'brittle') && hasPerk(s.perks, 'shatter')) out.push('永凍碎裂');
+  if (hasPerk(s.perks, 'multishot') && hasPerk(s.perks, 'pierce') && hasPerk(s.perks, 'railgun')) out.push('彈幕軌道');
+  return out;
 }
 
 const SAT_ORBIT = TOWER_RADIUS + 46;
@@ -215,8 +249,9 @@ const SAT_FIRE_CD = 1.1;
 
 /** 穿透彈可再貫穿的敵人數（軌道砲大幅提升） */
 function pierceCount(s: SimState): number {
-  if (!hasPerk(s.perks, 'pierce')) return 0;
-  return (hasPerk(s.perks, 'railgun') ? 5 : 2) + (s.timeFreezeTimer > 0 ? 3 : 0);
+  const specPierce = s.specializations.attack === 'rail' ? 2 : 0;
+  if (!hasPerk(s.perks, 'pierce')) return specPierce;
+  return (hasPerk(s.perks, 'railgun') ? 5 : 2) + specPierce + (s.timeFreezeTimer > 0 ? 3 : 0);
 }
 
 /** 多重射擊的額外目標數（多重射擊 +1、齊射再 +1） */
@@ -235,7 +270,7 @@ function fireBullet(s: SimState, target: Enemy, ox = 0, oy = 0): void {
     y: oy,
     targetId: target.id,
     speed: s.stats.projectileSpeed,
-    dmg: s.stats.damage * combatDamageMult(s) * (crit ? s.stats.critFactor : 1),
+    dmg: s.stats.damage * combatDamageMult(s) * (s.specializations.attack === 'rail' ? 1.18 : 1) * (crit ? s.stats.critFactor : 1),
     crit,
     ...(pierce > 0 ? { pierce, hitIds: [], pierceRamp: hasPerk(s.perks, 'railgun') ? 0.15 : 0 } : {}),
   });
@@ -254,6 +289,7 @@ function damageEnemy(s: SimState, e: Enemy, raw: number, source: DamageSource, c
 }
 
 function damageTower(s: SimState, raw: number, source: string): number {
+  if (s.specializations.defense === 'shield' && s.shieldHp > 0) raw *= 0.72;
   const mitigated = Math.max(1, raw - s.stats.armor) * (1 - s.stats.damageReduction);
   const absorbed = Math.min(s.shieldHp, mitigated);
   s.shieldHp -= absorbed;
@@ -262,6 +298,7 @@ function damageTower(s: SimState, raw: number, source: string): number {
   s.damageTaken += dealt;
   s.lastDamageSource = source;
   s.events.push({ type: 'towerHit', dmg: dealt });
+  if (dealt > 0 && s.challenge?.type === 'noDamage') s.challenge.failed = true;
   if (dealt > 0) chargeUltimates(s, Math.min(8, dealt / s.stats.maxHealth * 35));
   return dealt;
 }
@@ -383,10 +420,15 @@ function killEnemy(s: SimState, e: Enemy): void {
   const elite = !['normal', 'fast'].includes(e.typeId);
   const bounty = elite ? s.stats.eliteBounty * (e.typeId === 'boss' && (s.inRunLevels.eliteBounty ?? 0) >= 10 ? 1.25 : 1) : 1;
   const baseCoins = e.coinValue * s.stats.coinBonus * bounty;
-  s.cash += e.cashValue * s.stats.cashPerKill * coinMult * bounty;
+  const specBounty = s.specializations.economy === 'bounty' ? 1.25 : 1;
+  s.cash += e.cashValue * s.stats.cashPerKill * coinMult * bounty * specBounty;
   s.coinsEarned += e.coinValue * s.stats.coinBonus * coinMult * bounty;
   if (coinMult > 1) s.ultCoins.golden = (s.ultCoins.golden ?? 0) + baseCoins * (coinMult - 1);
   s.kills++;
+  s.coreEnergy = Math.min(100, s.coreEnergy + (e.typeId === 'boss' ? 18 : e.eliteAffix ? 5 : 2));
+  if (e.burnTime > 0 && activeSynergies(s).includes('煉獄鏈')) s.coreEnergy = Math.min(100, s.coreEnergy + 3);
+  if (e.frozenTime > 0 && activeSynergies(s).includes('永凍碎裂')) s.coreEnergy = Math.min(100, s.coreEnergy + 3);
+  if (s.challenge?.type === 'outerRing' && Math.hypot(e.x, e.y) >= s.stats.range * .72) s.challenge.progress++;
   if (s.stats.killHeal > 0) {
     const heal = s.stats.maxHealth * s.stats.killHeal * (elite && (s.inRunLevels.killHeal ?? 0) >= 10 ? 2 : 1);
     s.towerHp = Math.min(s.stats.maxHealth, s.towerHp + heal);
@@ -520,7 +562,7 @@ function applyFrost(s: SimState, e: Enemy): void {
 function startNextWave(s: SimState): void {
   s.cash += s.stats.cashPerWave;
   // 利息卡：按目前現金比例生息（上限避免滾雪球失控）
-  const interest = s.mods.interest + s.stats.interestRate;
+  const interest = s.mods.interest + s.stats.interestRate + (s.specializations.economy === 'interest' ? .04 : 0);
   if (interest > 0) {
     const bossBoost = isBossWave(s.wave + 1) && (s.inRunLevels.interestRate ?? 0) >= 10 ? 2 : 1;
     s.cash += Math.min(s.cash * interest * bossBoost, s.stats.cashPerWave * 12);
@@ -533,23 +575,59 @@ function startNextWave(s: SimState): void {
     s.zoneMeter = 0;
     s.zonePulseTimer = zoneForWave(s.wave).mechanic.interval ?? 0;
   }
-  s.spawnList = waveComposition(s.wave, s.rng);
+  s.spawnList = routeComposition(s, waveComposition(s.wave, s.rng));
   s.spawnIdx = 0;
   s.spawnTimer = 0;
   s.events.push({ type: 'wave', wave: s.wave, boss: isBossWave(s.wave) });
   s.battleTimeline.push({time:s.time,wave:s.wave,text:isBossWave(s.wave)?'Boss 波開始':'新波次'});
-  if (s.wave > 1 && (s.wave - 1) % 10 === 0) {
+  const routeCheckpoint = s.wave > 1 && (s.wave - 1) % 10 === 0;
+  if (routeCheckpoint) {
     s.pendingRoute = true;
     s.events.push({ type: 'routeOffer', wave: s.wave });
   }
   if (isPerkWave(s.wave)) {
     const choices = rollPerkChoices(s.perks, s.rng, PERK_CONFIG.choices + s.mods.extraPerkChoices, s.wave);
     if (choices.length > 0) {
-      s.pendingPerks = choices;
+      if (routeCheckpoint) s.queuedPerks = choices;
+      else s.pendingPerks = choices;
       s.perkRerolls = 0;
-      s.events.push({ type: 'perkOffer', wave: s.wave, choices });
+      if (!routeCheckpoint) s.events.push({ type: 'perkOffer', wave: s.wave, choices });
     }
   }
+  if (s.wave % 5 === 2) startChallenge(s);
+}
+
+function routeComposition(s: SimState, base: string[]): string[] {
+  const route = ROUTES[s.activeRoute];
+  const wanted = Math.max(1, Math.round(base.length * route.count));
+  const list = Array.from({ length: wanted }, (_, i) => base[i % base.length]);
+  if (s.activeRoute === 'armored') {
+    for (let i = 0; i < list.length; i += 3) list[i] = s.wave >= 24 && i % 2 === 0 ? 'protector' : 'tank';
+  }
+  return list;
+}
+
+function startChallenge(s: SimState): void {
+  const kind = Math.floor(s.wave / 5) % 3;
+  s.challenge = kind === 0
+    ? { type: 'noDamage', name: '完美防線：本波不受傷', goal: 1, progress: 0, failed: false, startedAt: s.time }
+    : kind === 1
+      ? { type: 'quickClear', name: '速攻：22 秒內清場', goal: 22, progress: 0, failed: false, startedAt: s.time }
+      : { type: 'outerRing', name: '遠距攔截：外圈擊殺 5 名', goal: 5, progress: 0, failed: false, startedAt: s.time };
+  s.events.push({ type: 'challenge', state: 'start', text: s.challenge.name });
+}
+
+function finishChallenge(s: SimState): void {
+  const c = s.challenge;
+  if (!c) return;
+  const success = !c.failed && (c.type === 'noDamage' || (c.type === 'quickClear' ? s.time - c.startedAt <= c.goal : c.progress >= c.goal));
+  if (success) {
+    const reward = Math.max(s.stats.cashPerWave * 1.5, s.cash * .02);
+    s.cash += reward;
+    s.coreEnergy = Math.min(100, s.coreEnergy + 25);
+    s.events.push({ type: 'challenge', state: 'complete', text: `挑戰完成 +$${Math.round(reward)}` });
+  } else s.events.push({ type: 'challenge', state: 'failed', text: '挑戰失敗' });
+  s.challenge = null;
 }
 
 function isZoneEntryWaveCompat(wave: number): boolean {
@@ -573,8 +651,13 @@ export function step(s: SimState, dt: number): void {
   if (s.over) return;
   s.events.length = 0;
   // Perk 選擇中：模擬暫停（確定性不受 UI 思考時間影響）
+  // Specialization pausing is a presentation concern; headless simulations may continue
+  // and the app loop itself pauses while the choice overlay is open.
   if (s.pendingPerks) return;
   s.time += dt;
+  s.tacticCooldown = Math.max(0, s.tacticCooldown - dt);
+  s.overclockTimer = Math.max(0, s.overclockTimer - dt);
+  if (s.specializations.defense === 'repairBay' && s.towerHp < s.stats.maxHealth * .5) s.towerHp = Math.min(s.stats.maxHealth, s.towerHp + s.stats.maxHealth * .006 * dt);
 
   // 終極武器冷卻與限時效果
   for (const id in s.ultCooldowns) {
@@ -705,6 +788,7 @@ export function step(s: SimState, dt: number): void {
       s.spawnTimer += spawnIntervalForWave(s.wave);
     }
   } else if (s.enemies.length === 0) {
+    finishChallenge(s);
     s.interWaveTimer = WAVE_CONFIG.interWaveDelay;
   }
 
@@ -746,6 +830,10 @@ export function step(s: SimState, dt: number): void {
       e.attackTimer -= dt;
       if (e.attackTimer <= 0) {
         damageTower(s, e.dmg, e.bossArchetype ? `${e.bossArchetype} Boss` : (e.eliteAffix ? `${e.eliteAffix} 菁英` : e.typeId));
+        if (e.typeId === 'jammer') {
+          s.coreEnergy = Math.max(0, s.coreEnergy - 12);
+          s.events.push({ type: 'status', id: e.id, x: e.x, y: e.y, status: 'empower' });
+        }
         if (e.attackRange > 0) s.events.push({ type: 'enemyShot', x: e.x, y: e.y });
         // 吸血菁英：攻擊塔時回復自身血量
         const eDef = ENEMY_TYPES.find((t) => t.id === e.typeId);
@@ -755,7 +843,7 @@ export function step(s: SimState, dt: number): void {
         }
         if (e.bossArchetype === 'leech') e.hp = Math.min(e.maxHp, e.hp + e.maxHp * .08);
         // 荊棘反傷卡：近戰攻擊者受到一部分傷害反彈
-        const thorns = s.mods.thorns + s.stats.thorns;
+        const thorns = s.mods.thorns + s.stats.thorns + (s.specializations.defense === 'thorns' ? .55 : 0);
         const canReflect = e.attackRange === 0 || (s.inRunLevels.thorns ?? 0) >= 10;
         if (thorns > 0 && canReflect) {
           damageEnemy(s, e, e.dmg * thorns, 'thorns');
@@ -794,7 +882,9 @@ export function step(s: SimState, dt: number): void {
   s.enemies.push(...summoned);
 
   // 塔索敵開火（用距離平方比較，冷卻可在單 tick 內多次觸發以支援高攻速）
-  const cooldown = 1 / (s.stats.attackSpeed * momentumMult(s) * (1 - s.zoneMeter) * (s.bossSlowTimer > 0 ? .6 : 1));
+  const specSpeed = s.specializations.attack === 'rapid' ? 1.25 : 1;
+  const tacticSpeed = s.overclockTimer > 0 ? 1.65 : 1;
+  const cooldown = 1 / (s.stats.attackSpeed * specSpeed * tacticSpeed * momentumMult(s) * (1 - s.zoneMeter) * (s.bossSlowTimer > 0 ? .6 : 1));
   s.attackTimer -= dt;
   while (s.attackTimer <= 0) {
     const target = selectTarget(s, s.enemies.filter((e) => e.x * e.x + e.y * e.y <= s.stats.range * s.stats.range && (e.eliteAffix !== 'stealth' || Math.hypot(e.x, e.y) <= s.stats.range * .62)));
@@ -865,6 +955,12 @@ export function step(s: SimState, dt: number): void {
       const zoneBonus = s.mods.zoneDamage[zoneForWave(s.wave).id] ?? 0;
       if (zoneBonus > 0) dmg *= 1 + zoneBonus;
       damageEnemy(s, target, dmg, b.source ?? 'direct', b.crit);
+      if (s.specializations.attack === 'blast' && (b.source ?? 'direct') === 'direct') {
+        for (const nearby of [...s.enemies].filter((e) => e !== target && Math.hypot(e.x - target.x, e.y - target.y) <= 72)) {
+          damageEnemy(s, nearby, dmg * .32, 'splash');
+          if (nearby.hp <= 0) killEnemy(s, nearby);
+        }
+      }
       if (target.eliteAffix === 'reflective') damageTower(s, Math.min(dmg * .08, s.stats.maxHealth * .025), '反射菁英');
       // 處決者：血量落入門檻直接了結（頭目門檻較低）
       if (target.hp > 0 && hasPerk(s.perks, 'execute')) {
@@ -982,6 +1078,10 @@ export function selectTarget(s: Pick<SimState, 'targetPriority'>, candidates: En
       case 'lowHp': return a.hp - b.hp || dist(a) - dist(b) || a.id - b.id;
       case 'elite': return Number(isElite(b)) - Number(isElite(a)) || dist(a) - dist(b) || a.id - b.id;
       case 'ranged': return Number(b.attackRange > 0) - Number(a.attackRange > 0) || dist(a) - dist(b) || a.id - b.id;
+      case 'support': {
+        const score = (e: Enemy) => Number(e.typeId === 'protector') * 5 + Number(e.typeId === 'jammer') * 4 + Number(e.eliteAffix === 'healer') * 3 + Number(e.typeId === 'splitter') * 2 + Number(e.typeId === 'sniper');
+        return score(b) - score(a) || dist(a) - dist(b) || a.id - b.id;
+      }
       default: return dist(a) - dist(b) || a.id - b.id;
     }
   });
@@ -998,6 +1098,10 @@ export function chooseRoute(s: SimState, route: RouteId): boolean {
   if (!s.pendingRoute || !ROUTES[route]) return false;
   s.activeRoute = route;
   s.pendingRoute = false;
+  if (s.queuedPerks?.length) {
+    s.pendingPerks = s.queuedPerks;
+    s.queuedPerks = null;
+  }
   return true;
 }
 
@@ -1014,11 +1118,57 @@ export function buyInRunUpgrade(s: SimState, upgradeId: string): boolean {
   if (!free) s.cash -= cost;
   s.inRunLevels[upgradeId] = level + 1;
   recomputeStats(s);
+  if (level + 1 === 10 && !s.specializations[def.category] && !s.pendingSpecialization) {
+    s.pendingSpecialization = def.category;
+    s.events.push({ type: 'specializationOffer', category: def.category });
+  }
+  return true;
+}
+
+const SPECIALIZATION_CATEGORIES: Record<SpecializationId, UpgradeCategory> = {
+  rapid: 'attack', rail: 'attack', blast: 'attack',
+  shield: 'defense', thorns: 'defense', repairBay: 'defense',
+  bounty: 'economy', interest: 'economy', discount: 'economy',
+};
+
+export function chooseSpecialization(s: SimState, id: SpecializationId): boolean {
+  const category = SPECIALIZATION_CATEGORIES[id];
+  if (!s.pendingSpecialization || s.pendingSpecialization !== category || s.specializations[category]) return false;
+  s.specializations[category] = id;
+  s.pendingSpecialization = null;
+  return true;
+}
+
+export function activateTactic(s: SimState, tactic: TacticId): boolean {
+  const costs: Record<TacticId, number> = { pulse: 35, overclock: 50, repair: 40 };
+  const cost = costs[tactic];
+  if (s.over || s.pendingRoute || s.pendingPerks || s.pendingSpecialization || s.tacticCooldown > 0 || s.coreEnergy < cost) return false;
+  s.coreEnergy -= cost;
+  s.tacticCooldown = 1.2;
+  const zone = zoneForWave(s.wave);
+  if (tactic === 'pulse') {
+    for (const e of [...s.enemies]) {
+      const d = Math.hypot(e.x, e.y) || 1;
+      e.x += e.x / d * (zone.mechanic.kind === 'void' ? 85 : 54);
+      e.y += e.y / d * (zone.mechanic.kind === 'void' ? 85 : 54);
+      if (zone.mechanic.kind === 'frost') e.frozenTime = Math.max(e.frozenTime, 2.2);
+      if (zone.mechanic.kind === 'magma') {
+        damageEnemy(s, e, s.stats.damage * 1.8, 'burn');
+        if (e.hp <= 0) killEnemy(s, e);
+      }
+    }
+  } else if (tactic === 'overclock') s.overclockTimer = 7;
+  else {
+    s.towerHp = Math.min(s.stats.maxHealth, s.towerHp + s.stats.maxHealth * .28);
+    s.shieldHp = Math.min(s.stats.energyShield + s.stats.maxHealth * .15, s.shieldHp + s.stats.maxHealth * .12);
+  }
+  s.events.push({ type: 'tactic', tactic, color: tactic === 'pulse' ? zone.accent : tactic === 'overclock' ? '#ff7b54' : '#58e6a9' });
   return true;
 }
 
 export function inRunUpgradeCost(s: Pick<SimState, 'stats'>, def: (typeof IN_RUN_UPGRADES)[number], level: number): number {
-  return Math.max(1, Math.ceil(upgradeCost(def, level) * (1 - s.stats.upgradeDiscount)));
+  const specDiscount = 'specializations' in s && (s as SimState).specializations.economy === 'discount' ? .15 : 0;
+  return Math.max(1, Math.ceil(upgradeCost(def, level) * (1 - s.stats.upgradeDiscount - specDiscount)));
 }
 
 /** 從待選 Perk 中選一個；成功時回傳 true 並恢復模擬 */

@@ -420,7 +420,26 @@
       .route-option.danger { border-color:#a94762; background:#2a1522; }
       .route-option strong { display:block; margin-bottom:8px; font-size:18px; }
       .route-option span { color:#aab8d0; line-height:1.45; }
-      @media(max-width:560px){ .route-options{grid-template-columns:1fr} }
+      .route-option small { display:block; margin-top:8px; color:#68d5ff; font-size:10px; letter-spacing:.4px; }
+      @media(max-width:560px){ .route-box{padding:18px;max-height:88vh;overflow:auto}.route-options{grid-template-columns:1fr;gap:8px}.route-option{padding:13px 14px}.route-option strong{font-size:15px;margin-bottom:4px} }
+
+      #spec-overlay { position:fixed; inset:0; z-index:92; display:none; place-items:center; padding:20px; background:rgba(3,7,18,.86); backdrop-filter:blur(8px); }
+      #spec-overlay.active { display:grid; }
+      .spec-box { width:min(440px,94vw); padding:22px; border:1px solid #6e5bb8; border-radius:18px; background:linear-gradient(145deg,#18162c,#0a1020); text-align:center; box-shadow:0 24px 80px #000b; }
+      .spec-options { display:grid; gap:9px; margin-top:16px; }
+      .spec-option { padding:13px; border:1px solid #56458d; border-radius:12px; color:#f3efff; background:#201b39; text-align:left; }
+      .spec-option strong { display:block; color:#d6c7ff; font-size:15px; }
+      .spec-option span { color:#aaa3c1; font-size:11px; }
+
+      #tactic-hud { position:absolute; left:12px; bottom:72px; z-index:7; width:min(310px,calc(100% - 24px)); pointer-events:none; }
+      #energy-track { height:7px; border-radius:99px; background:#07111d; border:1px solid #31516e; overflow:hidden; box-shadow:0 0 12px #40d8ff22; }
+      #energy-fill { display:block; height:100%; width:20%; background:linear-gradient(90deg,#36a8ff,#67f3ff); transition:width .15s; }
+      #synergy-hud { min-height:12px; margin-bottom:3px; color:#d5bcff; font-size:9px; font-weight:800; letter-spacing:.5px; text-shadow:0 0 8px #a16dff88; }
+      #tactic-row { display:flex; gap:6px; margin-top:5px; pointer-events:auto; }
+      .tactic-btn { flex:1; min-height:38px; padding:5px 3px; border:1px solid #31516e; border-radius:10px; color:#cceeff; background:rgba(9,23,38,.9); font-size:10px; font-weight:800; }
+      .tactic-btn:disabled { opacity:.35; filter:grayscale(.7); }
+      #challenge-hud { position:absolute; top:54px; left:50%; transform:translateX(-50%); z-index:6; display:none; max-width:78%; padding:6px 11px; border:1px solid #8d6f2c; border-radius:999px; color:#ffe39b; background:rgba(35,26,8,.9); font-size:10px; font-weight:800; white-space:nowrap; }
+      #challenge-hud.active { display:block; }
 
       /* Perk 三選一：戰鬥暫停時的覆蓋層 */
       #perk-overlay {
@@ -908,6 +927,8 @@
           <div id="ult-bar"></div>
           <div id="ult-tooltip"></div>
           <button id="target-btn" type="button">索敵：最近</button>
+          <div id="challenge-hud"></div>
+          <div id="tactic-hud"><div id="synergy-hud"></div><div id="energy-track"><span id="energy-fill"></span></div><div id="tactic-row"><button class="tactic-btn" data-tactic="pulse">脈衝 35</button><button class="tactic-btn" data-tactic="overclock">超頻 50</button><button class="tactic-btn" data-tactic="repair">修復 40</button></div></div>
         </div>
         <div id="bottom">
           <button id="upgrade-toggle" type="button" aria-expanded="true">收合升級</button>
@@ -944,9 +965,13 @@
             <button class="route-option" data-route="safe"><strong>🛡️ 穩定航道</strong><span>敵人 -10% HP／傷害<br>獎勵 -10%</span></button>
             <button class="route-option danger" data-route="danger"><strong>🔥 危險裂隙</strong><span>敵人 +25% HP、+15% 傷害<br>獎勵 +50%</span></button>
             <button class="route-option" data-route="anomaly" hidden><strong>🌀 異常星雲</strong><span>更多菁英詞綴<br>敵人 +10% HP、獎勵 +25%</span></button>
+            <button class="route-option" data-route="swarm"><strong>🐝 蟲群航道</strong><span>數量 +35%、單體較弱<br>獎勵 +20%</span><small>預報：高速／分裂單位密集</small></button>
+            <button class="route-option" data-route="armored"><strong>⬢ 重甲航道</strong><span>較少但更耐打<br>獎勵 +40%</span><small>預報：坦克／護盾支援增加</small></button>
           </div>
         </div>
       </div>
+
+      <div id="spec-overlay"><div class="spec-box"><h2 id="spec-title">選擇專精</h2><div class="sub">本場永久生效，三選一</div><div class="spec-options" id="spec-options"></div></div></div>
 
       <div id="offline-modal">
         <div class="card">

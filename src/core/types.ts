@@ -27,10 +27,15 @@ export type StatId =
   | 'upgradeDiscount'
   | 'eliteBounty';
 
-export type TargetPriority = 'closest' | 'farthest' | 'highHp' | 'lowHp' | 'elite' | 'ranged';
+export type TargetPriority = 'closest' | 'farthest' | 'highHp' | 'lowHp' | 'elite' | 'ranged' | 'support';
 export type EliteAffix = 'shielded' | 'regenerating' | 'enraged' | 'stealth' | 'volatile' | 'healer' | 'reflective' | 'blinking';
 export type BossArchetype = 'swarm' | 'bulwark' | 'leech' | 'chrono';
-export type RouteId = 'safe' | 'danger' | 'anomaly';
+export type RouteId = 'safe' | 'danger' | 'anomaly' | 'swarm' | 'armored';
+export type TacticId = 'pulse' | 'overclock' | 'repair';
+export type SpecializationId =
+  | 'rapid' | 'rail' | 'blast'
+  | 'shield' | 'thorns' | 'repairBay'
+  | 'bounty' | 'interest' | 'discount';
 export type DamageSource = 'direct' | 'burn' | 'chain' | 'splash' | 'bounce' | 'thorns' | 'ultimate' | 'satellite';
 
 export interface UpgradeDef {
@@ -173,4 +178,7 @@ export type SimEvent =
   | { type: 'chain'; x1: number; y1: number; x2: number; y2: number; crit: boolean }
   | { type: 'status'; id: number; x: number; y: number; status: 'burn' | 'frost' | 'freeze' | 'empower' }
   | { type: 'zonePulse'; zoneId: string; color: string }
-  | { type: 'routeOffer'; wave: number };
+  | { type: 'routeOffer'; wave: number }
+  | { type: 'specializationOffer'; category: UpgradeCategory }
+  | { type: 'tactic'; tactic: TacticId; color: string }
+  | { type: 'challenge'; state: 'start' | 'complete' | 'failed'; text: string };

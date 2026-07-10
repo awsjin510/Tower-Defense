@@ -1,4 +1,4 @@
-import { activateUltimate, buyInRunUpgrade, choosePerk, chooseRoute, currentRerollCost, cycleTargetPriority, inRunUpgradeCost, newRun, rerollPerks, setSpawnViewport, skipPerks, step, TICK_DT, type SimState } from './core/sim';
+import { activateTactic, activateUltimate, activeSynergies, buyInRunUpgrade, choosePerk, chooseRoute, chooseSpecialization, currentRerollCost, cycleTargetPriority, inRunUpgradeCost, newRun, rerollPerks, setSpawnViewport, skipPerks, step, TICK_DT, type SimState } from './core/sim';
 import { IN_RUN_UPGRADES, WORKSHOP_UPGRADES, computeStats, nextMilestone } from './core/stats';
 import { formatNumber, isMaxed, upgradeCost } from './core/economy';
 import { applyPerks, perkById, perkRarity, perkSchool, perkStacks } from './core/perks';
@@ -41,7 +41,7 @@ import {
   ultimateUpgradePrice,
   toggleUltimateEquip,
 } from './meta/ultimates';
-import type { StatId, TargetPriority, UpgradeCategory, UpgradeDef } from './core/types';
+import type { RouteId, SpecializationId, StatId, TacticId, TargetPriority, UpgradeCategory, UpgradeDef } from './core/types';
 import { applySave, ensurePlayerId, localStorageStore, mergeSaveProgress, type SaveData } from './meta/save';
 import { buyWorkshopUpgrade, settleRun } from './meta/workshop';
 import { render } from './ui/renderer';
@@ -933,7 +933,7 @@ let dispCash = 0;
 let dispCoin = 0;
 let dispHp = 0;
 const TARGET_LABELS: Record<TargetPriority, string> = {
-  closest: '最近', farthest: '最遠', highHp: '最高血', lowHp: '最低血', elite: '精英', ranged: '遠程',
+  closest: '最近', farthest: '最遠', highHp: '最高血', lowHp: '最低血', elite: '精英', ranged: '遠程', support: '支援',
 };
 
 function buildBattleTopbar(): void {
@@ -1013,6 +1013,22 @@ function updateBattleHud(dt: number): void {
     (goldBuff.querySelector('.gold-fill') as HTMLElement).style.width = `${Math.min(100, golden.remaining / duration * 100)}%`;
   }
   $('#target-btn').textContent = `索敵：${TARGET_LABELS[sim.targetPriority]}`;
+  ($('#energy-fill') as HTMLElement).style.width = `${sim.coreEnergy}%`;
+  const synergies = activeSynergies(sim);
+  $('#synergy-hud').textContent = synergies.length ? `流派連攜｜${synergies.join(' · ')}` : '';
+  const tacticCosts: Record<TacticId, number> = { pulse: 35, overclock: 50, repair: 40 };
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-tactic]')) {
+    const tactic = button.dataset.tactic as TacticId;
+    button.disabled = sim.coreEnergy < tacticCosts[tactic] || sim.tacticCooldown > 0 || Boolean(sim.pendingRoute || sim.pendingPerks || sim.pendingSpecialization);
+    button.classList.toggle('active', tactic === 'overclock' && sim.overclockTimer > 0);
+  }
+  const challengeHud = $('#challenge-hud');
+  challengeHud.classList.toggle('active', Boolean(sim.challenge));
+  if (sim.challenge) {
+    const c = sim.challenge;
+    const progress = c.type === 'outerRing' ? ` ${Math.min(c.progress, c.goal)}/${c.goal}` : c.type === 'quickClear' ? ` ${Math.max(0, c.goal - (sim.time - c.startedAt)).toFixed(1)}s` : c.failed ? ' 已失敗' : '';
+    challengeHud.textContent = `挑戰｜${c.name}${progress}`;
+  }
   const immediateThreats = sim.enemies.filter((e)=>Math.hypot(e.x,e.y)<95 || (e.eliteAffix==='volatile' && Math.hypot(e.x,e.y)<150));
   const threatWarning = $('#threat-warning');
   threatWarning.classList.toggle('active', immediateThreats.length > 0);
@@ -1153,6 +1169,70 @@ $('#perk-skip').addEventListener('click', () => {
     Sound.play(reward > 0 ? 'coin' : 'click');
     perkOverlay.classList.remove('active');
     refreshBattleButtons();
+  }
+});
+
+const SPEC_OPTIONS: Record<UpgradeCategory, Array<{ id: SpecializationId; name: string; desc: string }>> = {
+  attack: [
+    { id: 'rapid', name: '速射核心', desc: '攻擊速度 +25%' },
+    { id: 'rail', name: '軌道彈道', desc: '傷害 +18%，額外穿透 2 名' },
+    { id: 'blast', name: '爆裂彈頭', desc: '命中對周圍造成 32% 濺射' },
+  ],
+  defense: [
+    { id: 'shield', name: '相位護盾', desc: '護盾存在時承傷 -28%' },
+    { id: 'thorns', name: '反應裝甲', desc: '近戰與遠程反傷 +55%' },
+    { id: 'repairBay', name: '緊急維修', desc: '低於半血時持續修復' },
+  ],
+  economy: [
+    { id: 'bounty', name: '懸賞協議', desc: '擊殺現金 +25%' },
+    { id: 'interest', name: '複利引擎', desc: '每波額外 4% 利息' },
+    { id: 'discount', name: '模組回收', desc: '戰鬥升級價格 -15%' },
+  ],
+};
+
+function showSpecialization(category: UpgradeCategory): void {
+  const names: Record<UpgradeCategory, string> = { attack: '攻擊專精', defense: '防禦專精', economy: '經濟專精' };
+  $('#spec-title').textContent = names[category];
+  const list = $('#spec-options');
+  list.innerHTML = '';
+  for (const option of SPEC_OPTIONS[category]) {
+    const button = document.createElement('button');
+    button.className = 'spec-option';
+    button.innerHTML = `<strong>${option.name}</strong><span>${option.desc}</span>`;
+    button.addEventListener('click', () => {
+      if (sim && chooseSpecialization(sim, option.id)) {
+        $('#spec-overlay').classList.remove('active');
+        accumulator = 0;
+        Sound.play('buy');
+      }
+    });
+    list.appendChild(button);
+  }
+  $('#spec-overlay').classList.add('active');
+}
+
+function syncDecisionOverlays(): void {
+  const routeOverlay = $('#route-overlay');
+  if (!sim) {
+    routeOverlay.classList.remove('active'); perkOverlay.classList.remove('active'); $('#spec-overlay').classList.remove('active');
+    return;
+  }
+  routeOverlay.classList.toggle('active', sim.pendingRoute);
+  if (sim.pendingSpecialization) {
+    if (!$('#spec-overlay').classList.contains('active')) showSpecialization(sim.pendingSpecialization);
+  } else $('#spec-overlay').classList.remove('active');
+  if (!sim.pendingRoute && !sim.pendingSpecialization && sim.pendingPerks) {
+    if (!perkOverlay.classList.contains('active')) showPerkChoice(sim.wave, sim.pendingPerks);
+  } else perkOverlay.classList.remove('active');
+  if (sim.pendingRoute) {
+    $('#route-sub').textContent = `Wave ${sim.wave} 起生效｜預覽接下來 10 波的敵群傾向`;
+  }
+}
+
+for (const button of document.querySelectorAll<HTMLButtonElement>('[data-tactic]')) button.addEventListener('click', () => {
+  if (sim && activateTactic(sim, button.dataset.tactic as TacticId)) {
+    Sound.play('ult');
+    vfx.ingest(sim.events, sim.ultActive.some((active) => active.id === 'golden'));
   }
 });
 
@@ -1466,6 +1546,8 @@ function startBattle(): void {
   (document.querySelector('[data-route="anomaly"]') as HTMLButtonElement).hidden = (save.researchLevels.r_route ?? 0) < 1;
   resultsShown = false;
   perkOverlay.classList.remove('active');
+  $('#route-overlay').classList.remove('active');
+  $('#spec-overlay').classList.remove('active');
   dispCash = 0;
   dispCoin = 0;
   dispHp = sim.stats.maxHealth;
@@ -1704,7 +1786,7 @@ function frame(now: number): void {
   if (sim && !sim.over) {
     setSpawnViewport(sim, canvas.clientWidth, canvas.clientHeight);
     accumulator += dt * speed;
-    while (accumulator >= TICK_DT && !sim.pendingRoute) {
+    while (accumulator >= TICK_DT && !sim.pendingRoute && !sim.pendingPerks && !sim.pendingSpecialization) {
       step(sim, TICK_DT);
       // 取走本 tick 的視覺事件（下個 step 開頭會清空）
       vfx.ingest(sim.events, sim.ultActive.some((active) => active.id === 'golden'));
@@ -1715,6 +1797,8 @@ function frame(now: number): void {
         }
         if (e.type === 'perkOffer') showPerkChoice(e.wave, e.choices);
         else if (e.type === 'routeOffer') $('#route-overlay').classList.add('active');
+        else if (e.type === 'challenge') Sound.play(e.state === 'complete' ? 'coin' : 'click');
+        else if (e.type === 'tactic') Sound.play('ult');
         else if (e.type === 'fire') Sound.play('fire');
         else if (e.type === 'hit') Sound.play(e.crit ? 'crit' : 'hit');
         else if (e.type === 'kill') Sound.play(e.typeId === 'coin' ? 'coin' : 'kill');
@@ -1723,6 +1807,7 @@ function frame(now: number): void {
       }
       accumulator -= TICK_DT;
     }
+    syncDecisionOverlays();
     updateBattleHud(dt);
     uiTimer += dt;
     if (uiTimer >= 0.1) {
@@ -1752,8 +1837,9 @@ $('#start-btn').addEventListener('click', () => {
 });
 $('#results-btn').addEventListener('click', showWorkshop);
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-route]')) button.addEventListener('click', () => {
-  if (sim && chooseRoute(sim, button.dataset.route as 'safe'|'danger'|'anomaly')) {
+  if (sim && chooseRoute(sim, button.dataset.route as RouteId)) {
     $('#route-overlay').classList.remove('active'); accumulator = 0; Sound.play('click');
+    syncDecisionOverlays();
   }
 });
 
