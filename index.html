@@ -22,6 +22,11 @@
         --muted: #8a97ab;
         --text: #e8eef7;
         --accent: #4aa3ff;
+        --core: #57d9ff;
+        --health: #4fe08a;
+        --danger: #ff5f70;
+        --reward: #ffd45c;
+        --ultimate: #c58aff;
         --glass-hi: inset 0 1px 0 rgba(255,255,255,0.07);
         --glass-sh: 0 6px 20px rgba(0,0,0,0.38);
       }
@@ -32,7 +37,7 @@
           radial-gradient(950px 700px at 92% 8%, rgba(150,74,205,0.15), transparent 55%),
           radial-gradient(900px 900px at 50% 118%, rgba(40,130,150,0.13), transparent 60%),
           var(--bg); background-attachment: fixed; }
-      #app { display: flex; flex-direction: column; height: 100%; max-width: 560px; margin: 0 auto; }
+      #app { display: flex; flex-direction: column; height: 100%; width:100%; max-width:560px; margin: 0 auto; }
 
       #authbar {
         display: flex; align-items: center; justify-content: flex-end; gap: 8px;
@@ -250,9 +255,15 @@
         position: relative; height: 132px; border-radius: 9px; overflow:hidden; display:flex; align-items:center; justify-content:center;
         border:1px solid color-mix(in srgb, var(--rarity) 65%, #ffffff18); background:#0b0e13;
       }
-      .card-art-image { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transition:transform .22s ease, filter .22s ease; }
+      .card-art-image { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter:saturate(.8) contrast(1.08) brightness(.78) hue-rotate(-3deg); transition:transform .22s ease, filter .22s ease; }
       .card-cell:hover .card-art-image { transform:scale(1.035); }
-      .card-art-shade { position:absolute; inset:0; background:linear-gradient(180deg,rgba(0,0,0,.03) 35%,rgba(5,8,14,.88) 100%); }
+      .card-art-shade { position:absolute; inset:0; background:
+        repeating-linear-gradient(0deg,rgba(116,211,255,.025) 0 1px,transparent 1px 4px),
+        linear-gradient(180deg,rgba(5,20,34,.08) 25%,rgba(5,8,14,.9) 100%); }
+      .card-art::after { content:''; position:absolute; inset:7px; z-index:1; pointer-events:none;
+        border:1px solid color-mix(in srgb,var(--rarity,#4aa3ff) 45%,transparent); opacity:.72; }
+      .card-hud { position:absolute; z-index:2; left:42px; right:48px; top:8px; display:flex; justify-content:space-between;
+        color:#bcecff; font-family:var(--font-num); font-size:7px; letter-spacing:1.2px; text-shadow:0 1px 4px #000; opacity:.75; }
       .card-art.locked-art .card-art-image { filter:grayscale(.85) brightness(.42); }
       .card-art.locked-art .card-icon { left:50%; top:50%; transform:translate(-50%,-50%); width:34px; height:34px; color:#d5deea !important; }
       .card-icon { position:absolute; z-index:2; left:6px; top:6px; width:21px; height:21px; display:grid; place-items:center; padding:4px; border-radius:7px; background:rgba(5,9,15,.72); backdrop-filter:blur(5px); }
@@ -606,8 +617,8 @@
 
       /* 主要行動鈕：科幻切角 + 漸層 + 流光 */
       #start-btn {
-        background: linear-gradient(120deg, #1c7d47, #2ea043 42%, #48d06a);
-        box-shadow: 0 0 20px rgba(46,160,67,0.5), var(--glass-hi);
+        background: linear-gradient(120deg, #0969b8, #168fe0 42%, #57d9ff);
+        box-shadow: 0 0 24px rgba(36,166,235,.45), var(--glass-hi);
         letter-spacing: 3px; position: relative; overflow: hidden; border-radius: 10px;
         clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
       }
@@ -650,7 +661,7 @@
       #topbar .status-pips { display:flex; gap:3px; margin-top:3px; min-height:4px; }
       #topbar .status-pips span { width:12px; height:3px; border-radius:4px; box-shadow:0 0 7px currentColor; }
 
-      #canvas-wrap { min-height: 280px; }
+      #canvas-wrap { min-height: 340px; }
       #canvas-wrap::before {
         content:''; position:absolute; inset:0; z-index:1; pointer-events:none;
         background:
@@ -673,11 +684,13 @@
       #boss-hud .boss-track { height:7px; margin-top:5px; border-radius:6px; overflow:hidden; background:#240f27; }
       #boss-hud .boss-fill { height:100%; width:100%; background:linear-gradient(90deg,#d43cc8,#ff6b9d); box-shadow:0 0 10px #d43cc8; transition:width .12s; }
       #threat-warning { position:absolute; inset:0; z-index:5; pointer-events:none; border:0 solid rgba(255,50,80,0); transition:.12s; }
-      #threat-warning.active { border-width:9px; border-color:rgba(255,50,80,.42); box-shadow:inset 0 0 65px rgba(255,0,40,.28); animation:threatPulse .55s infinite alternate; }
+      #threat-warning.active { border-width:6px; border-color:rgba(255,50,80,.24);
+        background:radial-gradient(circle at var(--threat-x,50%) var(--threat-y,50%),rgba(255,28,66,.42),transparent 26%);
+        box-shadow:inset 0 0 40px rgba(255,0,40,.14); animation:threatPulse .55s infinite alternate; }
       @keyframes threatPulse { to{border-color:rgba(255,90,100,.72)} }
       #target-btn { position:absolute; right:10px; bottom:10px; z-index:7; padding:7px 10px; border-radius:9px; border:1px solid rgba(88,198,255,.5); color:#bcecff; background:rgba(8,18,30,.82); font-size:11px; font-weight:800; backdrop-filter:blur(6px); }
       #bottom { flex: 0 0 auto; }
-      .upgrade-grid { height: clamp(164px, 29vh, 220px); }
+      .upgrade-grid { height: clamp(164px, 25vh, 220px); }
       .upgrade-btn {
         border-color:color-mix(in srgb, var(--upgrade-color,#58a6ff) 34%, var(--brd));
         background:
@@ -730,6 +743,36 @@
       .perk-action:disabled { opacity:.4; cursor:not-allowed; }
       .perk-action.ghost { background:rgba(255,255,255,.04); color:#9bb3ce; }
 
+      /* 指揮中心：以實際進度取代空白裝飾面板 */
+      #workshop-screen::before, #workshop-screen::after { display:none; }
+      .command-deck { position:relative; min-height:180px; margin-bottom:14px; padding:20px 22px; overflow:hidden;
+        border:1px solid rgba(87,217,255,.3); border-radius:20px; background:
+        radial-gradient(circle at 24% 52%,rgba(87,217,255,.18),transparent 24%),
+        linear-gradient(135deg,rgba(19,39,64,.94),rgba(8,15,27,.9) 62%,rgba(28,19,48,.88));
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 18px 45px rgba(0,0,0,.28),0 0 32px rgba(74,163,255,.08); }
+      .command-deck::before { content:''; position:absolute; inset:0; opacity:.35; pointer-events:none; background:
+        linear-gradient(90deg,rgba(95,196,255,.11) 1px,transparent 1px) 0 0/28px 28px,
+        linear-gradient(rgba(95,196,255,.08) 1px,transparent 1px) 0 0/28px 28px; mask-image:linear-gradient(90deg,#000,transparent 72%); }
+      .command-orbit { position:absolute; left:8%; top:50%; width:150px; aspect-ratio:1; transform:translateY(-50%); border:1px solid rgba(87,217,255,.3); border-radius:50%; box-shadow:0 0 28px rgba(87,217,255,.12),inset 0 0 25px rgba(87,217,255,.08); }
+      .command-orbit::before,.command-orbit::after { content:''; position:absolute; border-radius:50%; border:1px dashed rgba(87,217,255,.28); animation:commandSpin 16s linear infinite; }
+      .command-orbit::before { inset:20px; } .command-orbit::after { inset:48px; border-style:solid; box-shadow:0 0 16px var(--core); }
+      .command-core { position:absolute; inset:50%; width:18px; height:18px; transform:translate(-50%,-50%) rotate(45deg); background:#d7f6ff; border:4px solid #269ee4; box-shadow:0 0 22px var(--core); }
+      @keyframes commandSpin { to{transform:rotate(360deg)} }
+      .command-copy { position:relative; z-index:2; margin-left:190px; }
+      .command-kicker { color:#8edfff; font-family:var(--font-num); font-size:9px; letter-spacing:2.5px; }
+      .command-title { margin-top:7px; font-family:var(--font-num); font-size:24px; letter-spacing:1.5px; color:#f2f8ff; }
+      .command-status { margin-top:6px; color:#9eb2cb; font-size:12px; }
+      .command-metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:18px; }
+      .command-metric { padding:9px 10px; border:1px solid rgba(126,160,215,.16); border-radius:10px; background:rgba(4,10,19,.5); }
+      .command-metric span { display:block; color:#8295ad; font-size:9px; letter-spacing:.7px; }
+      .command-metric strong { display:block; margin-top:3px; color:#eaf5ff; font-family:var(--font-num); font-size:15px; }
+
+      /* 戰鬥升級抽屜 */
+      #bottom { position:relative; }
+      #upgrade-toggle { position:absolute; z-index:8; right:10px; top:7px; min-width:92px; padding:5px 9px; border:1px solid rgba(87,217,255,.34); border-radius:9px; background:rgba(8,18,30,.92); color:#bcecff; font-size:10px; font-weight:800; cursor:pointer; }
+      #bottom.collapsed .upgrade-grid { display:none; }
+      #bottom.collapsed #tabs { padding-right:104px; }
+
       @media (max-width: 480px) {
         #topbar.battle-hud { display:grid; grid-template-columns:.7fr 1.25fr 1fr 1fr auto; }
         #topbar.battle-hud .hp-stat { grid-column:1 / 5; grid-row:2; flex-direction:row; align-items:center; gap:7px; }
@@ -741,7 +784,15 @@
         .upgrade-grid { height:clamp(156px,28vh,202px); grid-auto-rows:auto; }
         .upgrade-btn { height:82px; min-height:82px; grid-template-columns:30px minmax(0,1fr); padding:7px; gap:7px; }
         .upgrade-icon .ui-icon { width:17px; height:17px; }
-        #wave-banner { max-width:92%; white-space:normal; text-align:center; font-size:13px; }
+        #wave-banner { max-width:84%; padding:6px 12px; white-space:normal; text-align:center; font-size:11px; line-height:1.35; }
+        .command-deck { min-height:164px; padding:16px; }
+        .command-orbit { left:-18px; width:132px; opacity:.72; }
+        .command-copy { margin-left:96px; }
+        .command-title { font-size:17px; }
+        .command-metrics { grid-template-columns:1fr; gap:4px; margin-top:10px; }
+        .command-metric { display:flex; justify-content:space-between; align-items:center; padding:5px 7px; }
+        .command-metric strong { margin:0; font-size:12px; }
+        #upgrade-toggle { min-width:76px; }
       }
     </style>
   </head>
@@ -751,6 +802,19 @@
       <header id="topbar"></header>
 
       <div id="workshop-screen" class="screen active">
+        <section class="command-deck" aria-label="軌道防衛指揮中心">
+          <div class="command-orbit"><span class="command-core"></span></div>
+          <div class="command-copy">
+            <div class="command-kicker">ORBITAL DEFENSE COMMAND</div>
+            <div class="command-title">軌道核心已上線</div>
+            <div class="command-status">防衛網路穩定 · 等待部署指令</div>
+            <div class="command-metrics">
+              <div class="command-metric"><span>最高波次</span><strong data-command-wave>0</strong></div>
+              <div class="command-metric"><span>目前層級</span><strong data-command-tier>TIER 1</strong></div>
+              <div class="command-metric"><span>下一目標</span><strong data-command-goal>W20</strong></div>
+            </div>
+          </div>
+        </section>
         <div class="meta-nav">
           <button data-meta="workshop" class="active" type="button">工坊</button>
           <button data-meta="cards" type="button">卡片</button>
@@ -829,6 +893,7 @@
           <button id="target-btn" type="button">索敵：最近</button>
         </div>
         <div id="bottom">
+          <button id="upgrade-toggle" type="button" aria-expanded="true">收合升級</button>
           <div id="tabs"></div>
           <div id="battle-grid" class="upgrade-grid"></div>
         </div>

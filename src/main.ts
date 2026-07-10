@@ -345,6 +345,17 @@ function refreshWorkshop(): void {
     <div class="spacer"></div>`;
   // 工坊顯示「每場開局」的屬性值（永久升級 + 研究套用後、尚未買場內升級時的起點）
   const startStats = computeStats(save.workshopLevels, {}, save.researchLevels);
+  const commandWave = document.querySelector<HTMLElement>('[data-command-wave]');
+  const commandTier = document.querySelector<HTMLElement>('[data-command-tier]');
+  const commandGoal = document.querySelector<HTMLElement>('[data-command-goal]');
+  if (commandWave) commandWave.textContent = `W${save.bestWave}`;
+  if (commandTier) commandTier.textContent = `TIER ${save.tier}`;
+  if (commandGoal) {
+    const tierBestWave = tierBest(save, save.tier);
+    commandGoal.textContent = save.tier < TIER_CONFIG.maxTier && tierBestWave < TIER_CONFIG.unlockWave
+      ? `W${TIER_CONFIG.unlockWave}`
+      : 'BUILD +1';
+  }
   for (const btn of workshopButtons) {
     refreshUpgradeButton(btn, save.workshopLevels[btn.def.id] ?? 0, save.coins, 'coin', startStats[btn.def.stat], startStats[btn.def.stat] + btn.def.valuePerLevel);
   }
@@ -448,6 +459,7 @@ function cardArtMarkup(def: CardDef, star: number, locked = false): string {
   return `<div class="card-art${locked ? ' locked-art' : ''}">
     <img class="card-art-image" src="${cardArtUrl(def.id)}" alt="" loading="lazy">
     <span class="card-art-shade"></span>
+    <span class="card-hud"><span>TACTICAL ASSET</span><span>${def.id.toUpperCase()}</span></span>
     <span class="card-icon" style="color:${def.color}">${locked ? icon('lock') : icon(cardIcon(def))}</span>
     ${locked ? '' : `<span class="card-stars">${starDots(star, CARD_CONFIG.starMax)}</span>`}
     <span class="card-rarity rar-${rarity}">${CARD_RARITY_LABEL[rarity]}</span>
@@ -988,8 +1000,15 @@ function updateBattleHud(dt: number): void {
     bossHud.classList.remove('threatening');
   }
   $('#target-btn').textContent = `索敵：${TARGET_LABELS[sim.targetPriority]}`;
-  const immediateThreat = sim.enemies.some((e)=>Math.hypot(e.x,e.y)<95 || (e.eliteAffix==='volatile' && Math.hypot(e.x,e.y)<150));
-  $('#threat-warning').classList.toggle('active', immediateThreat);
+  const immediateThreats = sim.enemies.filter((e)=>Math.hypot(e.x,e.y)<95 || (e.eliteAffix==='volatile' && Math.hypot(e.x,e.y)<150));
+  const threatWarning = $('#threat-warning');
+  threatWarning.classList.toggle('active', immediateThreats.length > 0);
+  if (immediateThreats.length) {
+    const threat = immediateThreats.reduce((a,b)=>Math.hypot(a.x,a.y)<Math.hypot(b.x,b.y)?a:b);
+    const distance = Math.hypot(threat.x, threat.y) || 1;
+    threatWarning.style.setProperty('--threat-x', `${50 + threat.x / distance * 44}%`);
+    threatWarning.style.setProperty('--threat-y', `${50 + threat.y / distance * 44}%`);
+  }
 }
 
 $('#target-btn').addEventListener('click', () => {
@@ -997,6 +1016,15 @@ $('#target-btn').addEventListener('click', () => {
   cycleTargetPriority(sim);
   Sound.play('click');
   $('#target-btn').textContent = `索敵：${TARGET_LABELS[sim.targetPriority]}`;
+});
+
+$('#upgrade-toggle').addEventListener('click', () => {
+  const drawer = $('#bottom');
+  const collapsed = drawer.classList.toggle('collapsed');
+  const toggle = $('#upgrade-toggle') as HTMLButtonElement;
+  toggle.setAttribute('aria-expanded', String(!collapsed));
+  toggle.textContent = collapsed ? '展開升級' : '收合升級';
+  Sound.play('click');
 });
 
 /** 只刷新升級按鈕（成本/買得起狀態），與頂欄滾動分開 */
@@ -1435,8 +1463,16 @@ function startBattle(): void {
   vfx.chains.length = 0;
   vfx.ultCues.length = 0;
   vfx.goldGlow = 0;
+  vfx.bossIntro = 0;
+  vfx.critPulse = 0;
   workshopScreen.classList.remove('active');
   battleScreen.classList.add('active');
+  const upgradeDrawer = $('#bottom');
+  const collapseUpgrades = true;
+  upgradeDrawer.classList.toggle('collapsed', collapseUpgrades);
+  const upgradeToggle = $('#upgrade-toggle') as HTMLButtonElement;
+  upgradeToggle.setAttribute('aria-expanded', 'false');
+  upgradeToggle.textContent = '展開升級';
   buildBattleTopbar();
   buildTabs();
   buildBattleGrid();

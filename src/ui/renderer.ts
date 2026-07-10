@@ -169,8 +169,15 @@ function drawSkillCue(
 }
 
 /** 描出敵人形狀路徑（不填色），讓呼叫端可先填底色再疊閃白 */
+function visualRadius(e: Enemy): number {
+  if (e.typeId === 'boss') return Math.max(e.radius * 1.18, 28);
+  if (e.typeId === 'tank' || e.typeId === 'protector') return Math.max(e.radius, 13);
+  if (e.typeId === 'fast') return Math.max(e.radius, 9);
+  return Math.max(e.radius, 10);
+}
+
 function traceEnemy(ctx: CanvasRenderingContext2D, e: Enemy, time: number): void {
-  const r = e.radius;
+  const r = visualRadius(e);
   ctx.beginPath();
   switch (e.typeId) {
     case 'fast': {
@@ -563,6 +570,7 @@ export function render(
   ctx.lineCap = 'round';
   for (const e of s.enemies) {
     const base = e.golden ? '#ffd54a' : (enemyColor.get(e.typeId) ?? '#e05555');
+    const vr = visualRadius(e);
     const dist = Math.hypot(e.x, e.y) || 1;
     const ux = e.x / dist;
     const uy = e.y / dist;
@@ -571,10 +579,10 @@ export function render(
     grad.addColorStop(0, tint(base, 0));
     grad.addColorStop(1, tint(base, e.typeId === 'boss' ? 0.46 : 0.28));
     ctx.strokeStyle = grad;
-    ctx.lineWidth = e.typeId === 'boss' ? 8 : Math.max(2, e.radius * 0.42);
+    ctx.lineWidth = e.typeId === 'boss' ? 9 : Math.max(2.5, vr * 0.42);
     ctx.beginPath();
     ctx.moveTo(e.x + ux * trail, e.y + uy * trail);
-    ctx.lineTo(e.x - ux * e.radius * 0.15, e.y - uy * e.radius * 0.15);
+    ctx.lineTo(e.x - ux * vr * 0.15, e.y - uy * vr * 0.15);
     ctx.stroke();
   }
   ctx.restore();
@@ -582,6 +590,7 @@ export function render(
   // 敵人（形狀 + 血條 + 命中閃白）
   for (const e of s.enemies) {
     const base = e.golden ? '#ffd54a' : (enemyColor.get(e.typeId) ?? '#e05555');
+    const vr = visualRadius(e);
     // 護盾兵：畫出治療光環，讓玩家一眼看出威脅來源
     if (e.typeId === 'protector') {
       const rad = ENEMY_TYPES.find((t) => t.id === 'protector')?.auraRadius ?? 130;
@@ -623,12 +632,19 @@ export function render(
       ctx.strokeStyle = 'rgba(212,60,200,0.6)';
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(e.x, e.y, e.radius + 7 + Math.sin(s.time * 4) * 2, 0, Math.PI * 2);
+      ctx.arc(e.x, e.y, vr + 8 + Math.sin(s.time * 4) * 2, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.setLineDash([9, 7]);
+      ctx.strokeStyle = 'rgba(255,95,150,.38)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, vr + 16, s.time * .6, s.time * .6 + Math.PI * 1.45);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
     if (e.affixShield > 0) {
       ctx.strokeStyle = '#66e4ff'; ctx.lineWidth = 3; ctx.globalAlpha = .75;
-      ctx.beginPath(); ctx.arc(e.x, e.y, e.radius + 6, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.arc(e.x, e.y, vr + 6, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
     }
     if (e.eliteAffix) {
       const marks = { shielded:'◆', regenerating:'✚', enraged:'!', stealth:'◌', volatile:'✹', healer:'♥', reflective:'↩', blinking:'⌁' };
@@ -642,7 +658,7 @@ export function render(
       ctx.lineWidth = e.frozenTime > 0 ? 3 : 2;
       if (e.frozenTime <= 0) ctx.setLineDash([3, 3]);
       ctx.beginPath();
-      ctx.arc(e.x, e.y, e.radius + 4, 0, Math.PI * 2);
+      ctx.arc(e.x, e.y, vr + 4, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -651,7 +667,7 @@ export function render(
       for (let i = 0; i < e.burnStacks; i++) {
         const a = s.time * 4 + (i / Math.max(e.burnStacks, 1)) * Math.PI * 2;
         ctx.globalAlpha = .55 + Math.sin(a * 2) * .2;
-        ctx.beginPath(); ctx.arc(e.x + Math.cos(a) * (e.radius + 6), e.y + Math.sin(a) * (e.radius + 6) - 2, 2.2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(e.x + Math.cos(a) * (vr + 6), e.y + Math.sin(a) * (vr + 6) - 2, 2.2, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
     }
@@ -659,7 +675,7 @@ export function render(
       ctx.strokeStyle = '#d9f7ff'; ctx.lineWidth = 1.5;
       for (let i = 0; i < 6; i++) {
         const a = (i / 6) * Math.PI * 2;
-        ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x + Math.cos(a) * (e.radius + 7), e.y + Math.sin(a) * (e.radius + 7)); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x + Math.cos(a) * (vr + 7), e.y + Math.sin(a) * (vr + 7)); ctx.stroke();
       }
     }
     const fl = vfx.flash.get(e.id);
@@ -671,11 +687,11 @@ export function render(
       ctx.globalAlpha = 1;
     }
     if (e.hp < e.maxHp) {
-      const bw = e.radius * 2;
+      const bw = vr * 2;
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.fillRect(e.x - e.radius, e.y - e.radius - 8, bw, 3.5);
+      ctx.fillRect(e.x - vr, e.y - vr - 8, bw, 3.5);
       ctx.fillStyle = e.hp / e.maxHp > 0.4 ? '#56d364' : '#f0a03c';
-      ctx.fillRect(e.x - e.radius, e.y - e.radius - 8, bw * Math.max(e.hp / e.maxHp, 0), 3.5);
+      ctx.fillRect(e.x - vr, e.y - vr - 8, bw * Math.max(e.hp / e.maxHp, 0), 3.5);
     }
   }
 
@@ -696,6 +712,11 @@ export function render(
 
   // 射擊時以能量脈衝取代炮管後座。
   const fireFlash = vfx.muzzles.reduce((m, mz) => Math.max(m, mz.life / 0.06), 0);
+  const nearest = s.enemies.reduce<Enemy | null>((best, e) => {
+    if (!best) return e;
+    return Math.hypot(e.x, e.y) < Math.hypot(best.x, best.y) ? e : best;
+  }, null);
+  const aim = nearest ? Math.atan2(nearest.y, nearest.x) : s.time * 0.25;
 
   // 六角懸浮底座：深色金屬板、分割裝甲與緩慢旋轉的能量刻度。
   ctx.save();
@@ -715,14 +736,10 @@ export function render(
   ctx.stroke();
   ctx.restore();
 
-  const nearest = s.enemies.reduce<Enemy | null>((best, e) => {
-    if (!best) return e;
-    return Math.hypot(e.x, e.y) < Math.hypot(best.x, best.y) ? e : best;
-  }, null);
-  const aim = nearest ? Math.atan2(nearest.y, nearest.x) : s.time * 0.25;
   const offenseLv = (s.inRunLevels.damage ?? 0) + (s.workshopLevels.ws_damage ?? 0);
   const wingCount = Math.min(6, 3 + Math.floor(offenseLv / 18));
   ctx.save();
+  ctx.translate(-Math.cos(aim) * fireFlash * 5, -Math.sin(aim) * fireFlash * 5);
   ctx.rotate(aim);
   ctx.shadowColor = fireFlash > 0 ? '#ffe08a' : tint(zone.accent, 0.65);
   ctx.shadowBlur = 8 + fireFlash * 18;
@@ -864,6 +881,34 @@ export function render(
   ctx.globalAlpha = 1;
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  if (vfx.critPulse > 0) {
+    const alpha = Math.min(vfx.critPulse / 0.18, 1) * 0.16;
+    const flash = ctx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.min(w, h) * .58);
+    flash.addColorStop(0, `rgba(255,188,110,${alpha})`);
+    flash.addColorStop(1, 'rgba(255,95,70,0)');
+    ctx.fillStyle = flash;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  if (vfx.bossIntro > 0) {
+    const t = 1 - vfx.bossIntro / 1.25;
+    const fade = Math.min(1, vfx.bossIntro * 2.4);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = `rgba(255,86,150,${.55 * fade})`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([12, 8]);
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, Math.min(w, h) * (.12 + t * .48), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = `rgba(255,150,205,${.8 * fade})`;
+    ctx.font = `900 ${Math.max(14, Math.min(w, h) * .038)}px Orbitron, system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('HOSTILE COMMAND SIGNAL', w / 2, h * .2);
+    ctx.restore();
+  }
 
   for (const sh of vfx.shocks) {
     if (sh.source !== 'ultimate') continue;

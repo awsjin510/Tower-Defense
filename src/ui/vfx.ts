@@ -79,6 +79,8 @@ export class Vfx {
   ultCues: UltimateCue[] = [];
   /** 黃金塔啟用時的金光殘留（秒） */
   goldGlow = 0;
+  bossIntro = 0;
+  critPulse = 0;
   flash = new Map<number, number>();
   shake = 0;
   private rand = 0x9e3779b9;
@@ -96,6 +98,10 @@ export class Vfx {
       switch (e.type) {
         case 'hit': {
           this.flash.set(e.id, 0.12);
+          if (e.crit) {
+            this.critPulse = Math.max(this.critPulse, 0.18);
+            this.shake = Math.min(this.shake + 2.4, 10);
+          }
           this.texts.push({
             x: e.x + (this.rnd() - 0.5) * 6,
             y: e.y - 8,
@@ -116,6 +122,24 @@ export class Vfx {
               size: 13,
               life: 0.9,
               maxLife: 0.9,
+            });
+          }
+          const dist = Math.hypot(e.x, e.y) || 1;
+          const ux = e.x / dist;
+          const uy = e.y / dist;
+          const sparks = e.crit ? 8 : 3;
+          for (let i = 0; i < sparks; i++) {
+            const spread = (this.rnd() - 0.5) * (e.crit ? 1.35 : 0.8);
+            const speed = 55 + this.rnd() * (e.crit ? 150 : 70);
+            this.particles.push({
+              x: e.x,
+              y: e.y,
+              vx: (ux * Math.cos(spread) - uy * Math.sin(spread)) * speed,
+              vy: (uy * Math.cos(spread) + ux * Math.sin(spread)) * speed,
+              life: 0.18 + this.rnd() * 0.18,
+              maxLife: 0.36,
+              color: e.crit ? '#ffb06a' : '#9deaff',
+              size: e.crit ? 2.4 : 1.5,
             });
           }
           break;
@@ -187,6 +211,12 @@ export class Vfx {
           this.texts.push({ x: e.x, y: e.y - 16, vy: -28, text, color, size: e.status === 'freeze' ? 15 : 11, life: 0.55, maxLife: 0.55 });
           break;
         }
+        case 'wave':
+          if (e.boss) {
+            this.bossIntro = 1.25;
+            this.shake = Math.min(this.shake + 4, 10);
+          }
+          break;
         case 'zonePulse':
           this.shocks.push({ life: 0.75, maxLife: 0.75, color: e.color, source: 'zone' });
           this.shake = Math.min(this.shake + 4, 10);
@@ -234,6 +264,8 @@ export class Vfx {
       if (this.chains[i].life <= 0) this.chains.splice(i, 1);
     }
     if (this.goldGlow > 0) this.goldGlow = Math.max(0, this.goldGlow - dt);
+    if (this.bossIntro > 0) this.bossIntro = Math.max(0, this.bossIntro - dt);
+    if (this.critPulse > 0) this.critPulse = Math.max(0, this.critPulse - dt);
     for (const [id, t] of this.flash) {
       const nt = t - dt;
       if (nt <= 0) this.flash.delete(id);
