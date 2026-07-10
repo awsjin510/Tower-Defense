@@ -24,6 +24,7 @@ interface Particle {
   maxLife: number;
   color: string;
   size: number;
+  homeToCore?: boolean;
 }
 
 interface Muzzle {
@@ -93,7 +94,7 @@ export class Vfx {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
-  ingest(events: SimEvent[]): void {
+  ingest(events: SimEvent[], goldActive = false): void {
     for (const e of events) {
       switch (e.type) {
         case 'hit': {
@@ -161,6 +162,23 @@ export class Vfx {
               color,
               size: 1.5 + this.rnd() * 2.5,
             });
+          }
+          if (goldActive) {
+            for (let i = 0; i < 3; i++) {
+              const tangent = (this.rnd() - 0.5) * 70;
+              const dist = Math.hypot(e.x, e.y) || 1;
+              this.particles.push({
+                x: e.x,
+                y: e.y,
+                vx: (-e.y / dist) * tangent,
+                vy: (e.x / dist) * tangent,
+                life: 0.5 + i * 0.08,
+                maxLife: 0.66,
+                color: i === 0 ? '#fff0a6' : '#ffd257',
+                size: i === 0 ? 2.8 : 2,
+                homeToCore: true,
+              });
+            }
           }
           break;
         }
@@ -239,8 +257,16 @@ export class Vfx {
       p.life -= dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      p.vx *= 1 - 3 * dt;
-      p.vy *= 1 - 3 * dt;
+      if (p.homeToCore) {
+        const home = Math.min(7.5 * dt, 1);
+        p.x += -p.x * home;
+        p.y += -p.y * home;
+        p.vx *= 1 - 5 * dt;
+        p.vy *= 1 - 5 * dt;
+      } else {
+        p.vx *= 1 - 3 * dt;
+        p.vy *= 1 - 3 * dt;
+      }
       if (p.life <= 0) this.particles.splice(i, 1);
     }
     for (let i = this.muzzles.length - 1; i >= 0; i--) {

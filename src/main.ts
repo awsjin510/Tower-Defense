@@ -115,6 +115,8 @@ function decorateStaticUi(): void {
   }
   $('#start-btn').innerHTML = `${icon('play')}<span>開始戰鬥</span>`;
   $('#account-btn').innerHTML = `${icon('user')}<span>帳戶</span>`;
+  const goldIcon = document.querySelector<HTMLElement>('[data-gold-icon]');
+  if (goldIcon) goldIcon.innerHTML = icon('coin');
 }
 decorateStaticUi();
 
@@ -999,6 +1001,17 @@ function updateBattleHud(dt: number): void {
   } else {
     bossHud.classList.remove('threatening');
   }
+  const golden = sim.ultActive.find((active) => active.id === 'golden');
+  const goldBuff = $('#gold-buff');
+  goldBuff.classList.toggle('active', Boolean(golden));
+  if (golden) {
+    const resolved = sim.ultimates.find((ultimate) => ultimate.id === 'golden');
+    const duration = Math.max(resolved?.duration ?? golden.remaining, 0.01);
+    const multiplier = golden.coinMult + Math.floor((golden.kills ?? 0) / 10) * 0.25;
+    (goldBuff.querySelector('[data-gold-mult]') as HTMLElement).textContent = `×${multiplier.toFixed(2)}`;
+    (goldBuff.querySelector('[data-gold-time]') as HTMLElement).textContent = `${golden.remaining.toFixed(1)}s`;
+    (goldBuff.querySelector('.gold-fill') as HTMLElement).style.width = `${Math.min(100, golden.remaining / duration * 100)}%`;
+  }
   $('#target-btn').textContent = `索敵：${TARGET_LABELS[sim.targetPriority]}`;
   const immediateThreats = sim.enemies.filter((e)=>Math.hypot(e.x,e.y)<95 || (e.eliteAffix==='volatile' && Math.hypot(e.x,e.y)<150));
   const threatWarning = $('#threat-warning');
@@ -1694,7 +1707,7 @@ function frame(now: number): void {
     while (accumulator >= TICK_DT && !sim.pendingRoute) {
       step(sim, TICK_DT);
       // 取走本 tick 的視覺事件（下個 step 開頭會清空）
-      vfx.ingest(sim.events);
+      vfx.ingest(sim.events, sim.ultActive.some((active) => active.id === 'golden'));
       for (const e of sim.events) {
         if (e.type === 'wave') {
           showWaveBanner(e.wave, e.boss);

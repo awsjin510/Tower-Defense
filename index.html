@@ -683,6 +683,19 @@
       #boss-hud .boss-head { display:flex; justify-content:space-between; gap:8px; font-size:11px; font-weight:900; color:#ffc8f4; }
       #boss-hud .boss-track { height:7px; margin-top:5px; border-radius:6px; overflow:hidden; background:#240f27; }
       #boss-hud .boss-fill { height:100%; width:100%; background:linear-gradient(90deg,#d43cc8,#ff6b9d); box-shadow:0 0 10px #d43cc8; transition:width .12s; }
+      #gold-buff { position:absolute; top:58px; right:10px; z-index:7; display:none; width:148px; padding:7px 9px 8px;
+        border:1px solid rgba(255,207,74,.62); border-radius:11px; color:#fff1ad;
+        background:linear-gradient(145deg,rgba(46,31,5,.92),rgba(15,17,24,.9));
+        box-shadow:0 0 18px rgba(255,190,55,.2),inset 0 1px rgba(255,255,255,.08); backdrop-filter:blur(7px); }
+      #gold-buff.active { display:block; animation:goldBuffIn .24s ease-out; }
+      #gold-buff .gold-head { display:flex; align-items:center; gap:6px; white-space:nowrap; font-size:9px; font-weight:900; letter-spacing:.7px; }
+      #gold-buff .gold-head > span:nth-child(2) { flex:0 0 auto; }
+      #gold-buff .gold-head .ui-icon { width:13px; height:13px; color:#ffd45c; filter:drop-shadow(0 0 5px #ffd45c); }
+      #gold-buff .gold-mult { margin-left:auto; color:#ffd45c; font-family:var(--font-num); font-size:14px; }
+      #gold-buff .gold-time { min-width:30px; text-align:right; color:#fff6cf; font-family:var(--font-num); font-size:10px; }
+      #gold-buff .gold-track { height:3px; margin-top:6px; overflow:hidden; border-radius:4px; background:rgba(255,255,255,.1); }
+      #gold-buff .gold-fill { display:block; width:100%; height:100%; background:linear-gradient(90deg,#f0a928,#ffe477); box-shadow:0 0 7px #ffd45c; }
+      @keyframes goldBuffIn { from{opacity:0;transform:translateY(-6px) scale(.96)} to{opacity:1;transform:none} }
       #threat-warning { position:absolute; inset:0; z-index:5; pointer-events:none; border:0 solid rgba(255,50,80,0); transition:.12s; }
       #threat-warning.active { border-width:6px; border-color:rgba(255,50,80,.24);
         background:radial-gradient(circle at var(--threat-x,50%) var(--threat-y,50%),rgba(255,28,66,.42),transparent 26%);
@@ -885,6 +898,10 @@
         <div id="canvas-wrap">
           <canvas id="game"></canvas>
           <div id="boss-hud"><div class="boss-head"><span data-boss-name>頭目</span><span data-boss-skill>召喚蓄力</span></div><div class="boss-track"><div class="boss-fill"></div></div></div>
+          <div id="gold-buff" role="status" aria-live="polite">
+            <div class="gold-head"><span data-gold-icon></span><span>黃金塔</span><strong class="gold-mult" data-gold-mult>×3.0</strong><span class="gold-time" data-gold-time>8.0s</span></div>
+            <div class="gold-track"><span class="gold-fill"></span></div>
+          </div>
           <div id="threat-warning"></div>
           <div id="wave-banner"></div>
           <div id="free-banner">🪙 免費升級！</div>

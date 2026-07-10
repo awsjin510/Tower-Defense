@@ -78,29 +78,24 @@ function drawSkillCue(
   ctx.lineCap = 'round';
 
   if (cue.id === 'golden') {
-    const radius = shortSide * (0.18 + progress * 0.16);
-    const grad = ctx.createRadialGradient(cx, cy, radius * 0.2, cx, cy, radius * 1.35);
-    grad.addColorStop(0, 'rgba(255, 225, 120, 0.18)');
-    grad.addColorStop(0.55, tint(cue.color, 0.14 * fade));
-    grad.addColorStop(1, 'rgba(227, 179, 65, 0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius * 1.35, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = `rgba(255, 220, 100, ${0.45 * fade})`;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([10, 12]);
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    for (let i = 0; i < 9; i++) {
-      const a = s.time * 2.4 + i * Math.PI * 2 / 9;
-      const r = radius * (0.72 + (i % 3) * 0.14);
-      ctx.globalAlpha = fade * (0.45 + (i % 2) * 0.25);
-      ctx.fillStyle = '#ffe27a';
+    const radius = shortSide * (0.07 + progress * 0.12);
+    ctx.strokeStyle = `rgba(255, 220, 100, ${0.72 * fade})`;
+    ctx.lineWidth = 2.5;
+    for (let ring = 0; ring < 2; ring++) {
+      ctx.globalAlpha = fade * (1 - ring * .3);
       ctx.beginPath();
-      ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.72, 2.5 + (i % 3), 0, Math.PI * 2);
+      ctx.arc(cx, cy, radius * (1 + ring * .36), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 6; i++) {
+      const a = -s.time * 3 + i * Math.PI * 2 / 6;
+      const orbit = radius * 1.18;
+      const x = cx + Math.cos(a) * orbit;
+      const y = cy + Math.sin(a) * orbit;
+      ctx.globalAlpha = fade * .9;
+      ctx.fillStyle = i % 2 ? '#ffd257' : '#fff0a6';
+      ctx.beginPath();
+      ctx.arc(x, y, 3 + (i % 2), 0, Math.PI * 2);
       ctx.fill();
     }
   } else if (cue.id === 'timefreeze') {
@@ -843,6 +838,30 @@ export function render(
     ctx.globalAlpha=1;
   }
   // 塔核心：戰區主題色的脈動能量核
+  const goldenActive = s.ultActive.some((active) => active.id === 'golden');
+  if (goldenActive) {
+    const goldPulse = .5 + Math.sin(s.time * 5.5) * .5;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.shadowColor = '#ffd45c';
+    ctx.shadowBlur = 10 + goldPulse * 8;
+    ctx.strokeStyle = `rgba(255,212,92,${.48 + goldPulse * .24})`;
+    ctx.lineWidth = 2.2;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.arc(0, 0, TOWER_RADIUS + 17 + goldPulse * 2, s.time, s.time + Math.PI * 1.65);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (let i = 0; i < 4; i++) {
+      const a = -s.time * 2.1 + i * Math.PI / 2;
+      const orbit = TOWER_RADIUS + 27;
+      ctx.fillStyle = i % 2 ? '#ffd257' : '#fff0a6';
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * orbit, Math.sin(a) * orbit, 2.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
   const corePulse = 0.5 + Math.sin(s.time * 3.2) * 0.5;
   ctx.fillStyle = '#cfe4ff';
   ctx.beginPath();
@@ -880,7 +899,7 @@ export function render(
   }
   ctx.globalAlpha = 1;
 
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   if (vfx.critPulse > 0) {
     const alpha = Math.min(vfx.critPulse / 0.18, 1) * 0.16;
@@ -938,13 +957,4 @@ export function render(
   }
 
   // 黃金塔啟用：全螢幕金光暈邊（螢幕座標）
-  const goldActive = s.ultActive.some((a) => a.coinMult > 1);
-  if (goldActive || vfx.goldGlow > 0) {
-    const pulse = goldActive ? 0.28 + Math.sin(s.time * 6) * 0.08 : vfx.goldGlow / 0.6 * 0.3;
-    const vign = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.75);
-    vign.addColorStop(0, 'rgba(0,0,0,0)');
-    vign.addColorStop(1, `rgba(227, 179, 65, ${Math.max(pulse, 0)})`);
-    ctx.fillStyle = vign;
-    ctx.fillRect(0, 0, w, h);
-  }
 }
